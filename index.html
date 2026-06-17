@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArmStudio · 机器人控制与轨迹设计</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">🤖 ArmStudio</div>
+  <div class="toolbar">
+    <div class="modeswitch" title="切换工作模式">
+      <button id="mode-action" class="ms active">🎬 动作模式</button>
+      <button id="mode-cad" class="ms">🛠 CAD 建模</button>
+    </div>
+    <span class="sep"></span>
+    <select id="robot-select" class="tb sel" title="选择机器人"></select>
+    <button id="btn-import" class="tb">📂 导入</button>
+    <button id="btn-export" class="tb">💾 导出机型</button>
+    <span class="sep"></span>
+    <button id="btn-capture" class="tb primary">＋ 捕获关键帧</button>
+    <button id="btn-play" class="tb">▶ 播放</button>
+    <button id="btn-stop" class="tb">⏹ 停止</button>
+    <span class="sep"></span>
+    <button id="btn-code" class="tb">⌨ 生成代码</button>
+    <button id="btn-help" class="tb">？ 帮助 / 示例</button>
+  </div>
+  <div class="status" id="status">就绪</div>
+  <input type="file" id="file-input" accept=".json,.urdf,.xml" style="display:none">
+</header>
+
+<main id="main">
+  <section id="viewport">
+    <div class="view-tabs">
+      <button class="vtab active" data-view="3d">3D 视图</button>
+      <button class="vtab" data-view="2d">2D 视图（俯视）</button>
+      <div class="view-hint" id="view-hint">拖动场景旋转，拖动橙色末端球体设计姿态</div>
+    </div>
+    <div id="view3d" class="view-pane active"></div>
+    <div id="view2d" class="view-pane">
+      <canvas id="canvas2d"></canvas>
+      <div class="view2d-controls">
+        <label>作业高度 Y: <span id="height-val">120</span> mm</label>
+        <input type="range" id="height-slider" min="-100" max="500" value="120">
+        <div class="legend"><span class="dot ee"></span>当前末端 <span class="dot wp"></span>其他末端/关键帧 <span class="dot base"></span>原点</div>
+      </div>
+    </div>
+  </section>
+
+  <aside id="sidebar">
+    <!-- 末端 / 夹爪 -->
+    <div class="panel" id="ee-panel">
+      <h3>末端执行器 <small id="ee-hint">拖动设计姿态</small></h3>
+      <div id="ee-list" class="ee-list"></div>
+      <div class="row" id="gripper-row">
+        <label>夹爪：</label>
+        <button id="btn-gripper" class="tb">切换 开/合</button>
+        <span id="gripper-state">张开</span>
+      </div>
+    </div>
+
+    <!-- 目标位置（动作模式） -->
+    <div class="panel" id="target-panel">
+      <h3>目标位置 <small>当前末端 (mm)</small></h3>
+      <div class="row">
+        <label>X</label><input type="number" id="tx" class="num3">
+        <label>Y</label><input type="number" id="ty" class="num3">
+        <label>Z</label><input type="number" id="tz" class="num3">
+      </div>
+      <div class="row">
+        <label>固定运动轴</label>
+        <label class="ck"><input type="checkbox" id="lockx"> X</label>
+        <label class="ck"><input type="checkbox" id="locky"> Y</label>
+        <label class="ck"><input type="checkbox" id="lockz"> Z</label>
+      </div>
+      <div class="row"><label>到点速度</label><input type="number" id="move-speed" class="num" value="150"> mm/s</div>
+      <button id="btn-moveto" class="tb wide">➤ 移动到该点</button>
+      <button id="btn-clickmode" class="tb wide">🖱 点击取点模式：关</button>
+      <div class="muted" id="target-hint">开启点击取点后，在 3D 场景点击地面即可落下运动点（按"到点速度"与高度 Y）；拖动仍可旋转视角。</div>
+    </div>
+
+    <!-- 路点编辑（点击取点模式创建的点 → 拖拽/编辑坐标） -->
+    <div class="panel" id="wp-panel" style="display:none">
+      <h3>选定路点 <small id="wp-label">拖动或编辑坐标</small></h3>
+      <div class="row"><span class="wp-badge" id="wp-index">#1</span><span class="muted" id="wp-ee-name"></span></div>
+      <div class="row">
+        <label>X</label><input type="number" id="wpx" class="num3">
+        <label>Y</label><input type="number" id="wpy" class="num3">
+        <label>Z</label><input type="number" id="wpz" class="num3">
+      </div>
+      <div class="muted" id="wp-hint">✏ 编辑坐标或拖拽 3D / 2D 视图中的路点句柄来移动</div>
+    </div>
+
+    <!-- 关节滑块 -->
+    <div class="panel" id="joint-panel">
+      <h3>关节角度 <small>（手动控制）</small></h3>
+      <div id="joint-sliders"></div>
+      <button id="btn-home" class="tb wide">回到初始姿态</button>
+    </div>
+
+    <!-- 关键帧 -->
+    <div class="panel" id="kf-panel">
+      <h3>姿态关键帧 <small id="kf-count">0 个</small></h3>
+      <ol id="kf-list" class="wp-list"></ol>
+
+      <div id="seg-editor" style="display:none">
+        <div class="seg-title">第 <b id="seg-idx">-</b> 段（上一帧 → 本帧）</div>
+        <div class="row"><label>运动</label>
+          <select id="seg-motion" class="sel sm">
+            <option value="PTP">MoveJ · 关节 PTP</option>
+            <option value="LIN">MoveL · 直线</option>
+            <option value="CIRC">MoveC · 圆弧</option>
+          </select>
+        </div>
+        <div class="row"><label>速度</label><input type="number" id="seg-speed" class="num"> mm/s</div>
+        <div class="row"><label>加速</label><input type="number" id="seg-acc" class="num"> mm/s²</div>
+        <div class="row" id="seg-bulge-row"><label>弧高</label><input type="number" id="seg-bulge" class="num"> mm</div>
+      </div>
+
+      <div id="cycle-time" class="muted">节拍：—</div>
+      <div class="row"><label>速度倍率</label><input type="range" id="speed-slider" min="1" max="20" value="5"><span id="speed-mult" class="muted">1.0×</span></div>
+      <div class="speed-legend"><span>慢</span><i class="grad"></i><span>快</span></div>
+      <div id="play-progress" class="muted"></div>
+      <button id="btn-clear" class="tb wide">清空关键帧</button>
+    </div>
+
+    <!-- CAD 工作台（设计模式显示） -->
+    <div class="panel" id="design-panel" style="display:none">
+      <h3>🛠 CAD 工作台</h3>
+      <div class="row">
+        <button id="cad-new" class="tb">📄 新建空白</button>
+      </div>
+
+      <div class="tree-title">添加可动部件（先在树中选父连杆）</div>
+      <div class="addparts">
+        <button class="tb sm" data-add="revolute">＋ 旋转关节</button>
+        <button class="tb sm" data-add="prismatic">＋ 移动关节</button>
+        <button class="tb sm" data-add="fixed">＋ 固定骨骼</button>
+        <button class="tb sm" data-add="tool">＋ 末端工具</button>
+      </div>
+
+      <div class="tree-title">创建新零件（选父连杆后点按）</div>
+      <div class="addparts">
+        <button class="tb sm" data-shape="box">＋ 方块</button>
+        <button class="tb sm" data-shape="cylinder">＋ 圆柱</button>
+        <button class="tb sm" data-shape="sphere">＋ 球体</button>
+        <button class="tb sm" data-shape="extrude">＋ 拉伸体</button>
+      </div>
+
+      <div class="tree-title">结构树</div>
+      <ul id="struct-tree" class="tree"></ul>
+
+      <div class="row">
+        <label>手柄</label>
+        <button id="giz-move" class="tb sm active">⤧ 平移</button>
+        <button id="giz-rot" class="tb sm">⟳ 旋转</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="snap-on" checked> 吸附</label>
+        <input type="number" id="snap-step" class="num" value="10"> mm
+      </div>
+
+      <div id="node-editor" style="display:none">
+        <div class="tree-title">连杆属性</div>
+        <div class="row"><label>名称</label><input type="text" id="nd-name" class="txt"></div>
+        <div class="row"><label>关节</label>
+          <select id="nd-type" class="sel sm">
+            <option value="revolute">旋转 revolute</option>
+            <option value="continuous">连续 continuous</option>
+            <option value="prismatic">移动 prismatic</option>
+            <option value="fixed">固定 fixed</option>
+          </select>
+        </div>
+        <div class="row"><label>轴向</label>
+          <select id="nd-axis" class="sel sm"><option>X</option><option>Y</option><option selected>Z</option></select>
+        </div>
+        <div class="row"><label>原点</label>
+          <input type="number" id="nd-ox" class="num3"><input type="number" id="nd-oy" class="num3"><input type="number" id="nd-oz" class="num3">
+        </div>
+        <div class="row"><label>限位</label>
+          <input type="number" id="nd-lo" class="num"> ~ <input type="number" id="nd-hi" class="num">
+        </div>
+        <div class="row"><label>形状</label>
+          <select id="nd-shape" class="sel sm"><option value="cylinder">圆柱</option><option value="box">方块</option></select>
+        </div>
+        <div class="row" id="shape-cyl"><label>半径</label><input type="number" id="nd-radius" class="num"> mm</div>
+        <div class="row" id="shape-box" style="display:none"><label>宽×厚</label><input type="number" id="nd-w" class="num"> <input type="number" id="nd-d" class="num"></div>
+        <div class="row"><label>颜色</label><input type="color" id="nd-color" value="#6b7b8c"></div>
+
+        <!-- 增强的 CAD 外形编辑 -->
+        <div class="tree-title">外形编辑器 <small id="geom-label">关闭</small></div>
+        <div class="row"><label><input type="checkbox" id="nd-geom-enable"> 启用自定义外形</label></div>
+        <div id="geom-editor" style="display:none">
+          <div class="row"><label>类型</label>
+            <select id="nd-geom-type" class="sel sm">
+              <option value="box">方块 Box</option>
+              <option value="cylinder">圆柱 Cylinder</option>
+              <option value="sphere">球体 Sphere</option>
+              <option value="extrude">拉伸 Extrude</option>
+            </select>
+          </div>
+          <!-- Box params -->
+          <div class="row geom-params" data-for="box">
+            <label>尺寸</label>
+            <input type="number" id="nd-gbox-w" class="num" placeholder="宽"> <input type="number" id="nd-gbox-d" class="num" placeholder="深"> <input type="number" id="nd-gbox-h" class="num" placeholder="高">
+          </div>
+          <!-- Cylinder params -->
+          <div class="row geom-params" data-for="cylinder" style="display:none">
+            <label>尺寸</label> 半径 <input type="number" id="nd-gcyl-r" class="num"> 高 <input type="number" id="nd-gcyl-h" class="num">
+          </div>
+          <!-- Sphere params -->
+          <div class="row geom-params" data-for="sphere" style="display:none">
+            <label>半径</label> <input type="number" id="nd-gsph-r" class="num">
+          </div>
+          <!-- Extrude params -->
+          <div class="row geom-params" data-for="extrude" style="display:none">
+            <label>截面</label>
+            <select id="nd-gext-profile" class="sel sm">
+              <option value="rect">矩形</option>
+              <option value="circle">圆形</option>
+              <option value="triangle">三角形</option>
+              <option value="polygon">多边形</option>
+            </select>
+            <label>深度</label><input type="number" id="nd-gext-depth" class="num">
+          </div>
+          <!-- Extrude profile params: rect -->
+          <div class="row gext-profile" data-profile="rect" style="display:none">
+            <label>矩形</label> 宽 <input type="number" id="nd-gext-rw" class="num"> 高 <input type="number" id="nd-gext-rh" class="num">
+          </div>
+          <!-- Extrude profile params: circle -->
+          <div class="row gext-profile" data-profile="circle" style="display:none">
+            <label>半径</label> <input type="number" id="nd-gext-cr" class="num">
+          </div>
+          <!-- Extrude profile params: triangle -->
+          <div class="row gext-profile" data-profile="triangle" style="display:none">
+            <label>边长</label> <input type="number" id="nd-gext-ts" class="num">
+          </div>
+          <!-- Extrude profile params: polygon -->
+          <div class="row gext-profile" data-profile="polygon" style="display:none">
+            <label>顶点</label>
+            <button id="btn-gext-poly-edit" class="tb sm">编辑顶点</button>
+            <span class="muted" id="gext-poly-count">0 个</span>
+          </div>
+
+          <!-- Cutouts section -->
+          <div class="tree-title">孔洞 <small id="cutout-count">0 个</small>
+            <button id="btn-add-cutout" class="tb sm" style="float:right">＋ 添加</button>
+          </div>
+          <div id="cutout-list"></div>
+        </div>
+
+        <div class="row"><label><input type="checkbox" id="nd-ee"> 末端执行器</label></div>
+        <div class="row"><button id="nd-resetrot" class="tb sm">重置姿态</button><button id="nd-del" class="tb danger sm">删除</button></div>
+      </div>
+
+      <button id="btn-sethome" class="tb wide">把当前姿态设为初始</button>
+      <button id="cad-export" class="tb wide">💾 导出 CAD 模型 (JSON)</button>
+      <button id="cad-done" class="tb primary wide">▶ 切换到动作设计模式</button>
+    </div>
+  </aside>
+</main>
+
+<!-- 代码弹窗 -->
+<div id="code-modal" class="modal">
+  <div class="modal-box large">
+    <div class="modal-head">
+      <h2>生成的可用代码</h2>
+      <div class="code-tabs">
+        <button class="ctab active" data-lang="arduino">Arduino</button>
+        <button class="ctab" data-lang="ros">ROS (Python)</button>
+        <button class="ctab" data-lang="json">轨迹 JSON</button>
+      </div>
+      <button class="close" data-close>✕</button>
+    </div>
+    <pre id="code-output"><code></code></pre>
+    <div class="modal-foot">
+      <button id="btn-copy" class="tb primary">📋 复制</button>
+      <button id="btn-download" class="tb">⬇ 下载</button>
+      <span id="copy-tip"></span>
+    </div>
+  </div>
+</div>
+
+<!-- 帮助 / 引导 -->
+<div id="help-modal" class="modal show">
+  <div class="modal-box">
+    <div class="modal-head"><h2>👋 欢迎使用 ArmStudio</h2><button class="close" data-close>✕</button></div>
+    <div class="help-body">
+      <p>一个支持<b>任意结构机器人</b>的控制与轨迹设计工具。可仿真机械臂、四足等，支持导入自有机型并在软件中搭建。</p>
+      <ol>
+        <li><b>选机器人</b>：左上角下拉切换内置机型，或「📂 导入」你的 JSON / URDF。</li>
+        <li><b>设计姿态</b>：拖动 3D 末端球体（多末端可先在右侧选中），或调关节滑块，摆好后点「＋ 捕获关键帧」。</li>
+        <li><b>预览 & 出码</b>：「▶ 播放」在关键帧间插值运动；「⌨ 生成代码」导出 Arduino / ROS。</li>
+        <li><b>搭机器人</b>：点「🛠 设计模式」，拖动关节、加/删连杆、改关节类型，搭出自己的机器人并导出。</li>
+      </ol>
+      <p>先加载一个示例看看：</p>
+      <div class="examples" id="example-buttons"></div>
+    </div>
+    <div class="modal-foot"><button id="btn-start" class="tb primary">开始使用 →</button></div>
+  </div>
+</div>
+
+<!-- 多边形顶点编辑器 -->
+<div id="poly-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-head"><h2>编辑多边形顶点</h2><button class="close" data-close>✕</button></div>
+    <div class="help-body">
+      <p class="muted">输入顶点坐标 (X, Y)，按顺序连接成形。至少 3 个顶点。</p>
+      <div id="poly-vert-list"></div>
+      <button id="btn-poly-add" class="tb sm" style="margin-top:8px">＋ 添加顶点</button>
+    </div>
+    <div class="modal-foot">
+      <button id="btn-poly-done" class="tb primary">完成</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/kinematics.js"></script>
+<script src="js/shapes.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/urdf.js"></script>
+<script src="js/orbit.js"></script>
+<script src="js/gizmo.js"></script>
+<script src="js/robot3d.js"></script>
+<script src="js/view2d.js"></script>
+<script src="js/motion.js"></script>
+<script src="js/trajectory.js"></script>
+<script src="js/designer.js"></script>
+<script src="js/codegen.js"></script>
+<script src="js/examples.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
