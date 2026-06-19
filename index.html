@@ -162,32 +162,70 @@
         <button class="tb sm" data-shape="extrude">＋ 拉伸体</button>
       </div>
 
-      <!-- ===== ★ 草图绘制（醒目） ===== -->
+      <!-- ===== ★ 草图绘制 v2（醒目） ===== -->
       <div class="sketch-section">
-        <div class="sec-head sketch-title">✏️ 草图绘制 — 自定义任意轮廓</div>
-        <div class="sketch-toolbar">
-          <button id="btn-sketch-start" class="tb sm sketch-btn">✏️ 开始画草图</button>
-          <button id="btn-sketch-finish" class="tb sm sketch-btn" style="display:none">✅ 完成(<span id="sketch-count">0</span>)</button>
-          <button id="btn-sketch-cancel" class="tb sm sketch-btn-cancel" style="display:none">✕ 取消</button>
+        <div class="sec-head sketch-title">✏️ 草图绘制 — 选面 → 画形 → 定厚</div>
+
+        <!-- Step 1: 选择平面 -->
+        <div id="sketch-step-plane">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">步骤 1：选择草图平面</div>
+          <div class="sketch-toolbar">
+            <button class="tb sm plane-btn" data-plane="XY">XY 平面</button>
+            <button class="tb sm plane-btn" data-plane="YZ">YZ 平面</button>
+            <button class="tb sm plane-btn" data-plane="XZ">XZ 平面</button>
+          </div>
         </div>
-        <!-- 草图顶点坐标输入 -->
-        <div class="sketch-depth-row" id="sketch-coord-row" style="display:none">
-          <label>顶点坐标</label>
-          <span class="muted" id="sketch-vert-label">当前点 0</span>
-          <input type="number" id="sketch-input-x" class="num" value="0" step="5">
-          <input type="number" id="sketch-input-z" class="num" value="0" step="5">
-          <button id="btn-sketch-add-coord" class="tb sm" style="font-size:10px">＋</button>
+
+        <!-- Step 2: 选择形状类型 -->
+        <div id="sketch-step-shape" style="display:none">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">步骤 2：选择草图形状</div>
+          <div class="addparts">
+            <button class="tb sm shape-type-btn" data-stype="rect">矩形</button>
+            <button class="tb sm shape-type-btn" data-stype="circle">圆形</button>
+            <button class="tb sm shape-type-btn" data-stype="triangle">三角形</button>
+            <button class="tb sm shape-type-btn" data-stype="polygon">多边形</button>
+          </div>
+          <!-- 形状参数 -->
+          <div id="sketch-shape-params" style="display:none">
+            <div class="row" id="sp-rect"><label>矩形</label>宽<input type="number" id="sp-rect-w" class="num" value="60">高<input type="number" id="sp-rect-h" class="num" value="40"></div>
+            <div class="row" id="sp-circle" style="display:none"><label>半径</label><input type="number" id="sp-circle-r" class="num" value="30"></div>
+            <div class="row" id="sp-triangle" style="display:none"><label>边长</label><input type="number" id="sp-tri-s" class="num" value="50"></div>
+            <div class="row" id="sp-polygon" style="display:none">
+              <span class="muted" id="sp-poly-count">0 个顶点</span>
+              <button id="sp-poly-edit" class="tb sm">✏ 绘制</button>
+            </div>
+          </div>
         </div>
-        <div class="sketch-depth-row" id="sketch-depth-row" style="display:none">
-          <label>拉伸深度</label>
-          <input type="range" id="sketch-depth-slider" min="5" max="200" value="30">
-          <input type="number" id="sketch-depth" class="num" value="30">
-          <span class="muted">mm</span>
+
+        <!-- Step 3: 厚度 -->
+        <div id="sketch-step-depth" style="display:none">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">步骤 3：设定拉伸厚度</div>
+          <div class="sketch-depth-row">
+            <input type="range" id="sp-depth-slider" min="5" max="200" value="30" style="flex:1">
+            <input type="number" id="sp-depth" class="num" value="30">
+            <span class="muted">mm</span>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="sp-finish" class="tb sm sketch-btn">✅ 完成创建</button>
+            <button id="sp-cancel" class="tb sm sketch-btn-cancel">取消</button>
+          </div>
         </div>
-        <div class="sketch-hint" id="sketch-hint" style="display:none">
+
+        <div class="sketch-hint" id="sketch-v2-hint">
           <span class="sketch-hint-icon">💡</span>
-          在 <b>2D 俯视图</b> 点击放置顶点，或在下方输入 X,Z 坐标后按＋添加，<b>右键</b>撤销上一点
+          选平面后确认形状参数，设定厚度完成创建。完成后可在外形编辑器中修改顶点。
         </div>
+      </div>
+
+      <!-- ===== 布尔运算 ===== -->
+      <div class="panel" id="boolean-panel" style="padding:8px 12px;border:1px solid rgba(255,92,108,0.25);border-radius:8px;margin:8px 0;background:rgba(255,92,108,0.04)">
+        <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⚡ 布尔运算</div>
+        <div class="row" style="margin-top:2px">
+          <button id="btn-bool-union" class="tb sm" style="font-size:11px">∪ 合并</button>
+          <button id="btn-bool-subtract" class="tb sm" style="font-size:11px">⊖ 减去</button>
+          <button id="btn-bool-intersect" class="tb sm" style="font-size:11px">∩ 相交</button>
+        </div>
+        <div class="muted" style="font-size:10px;margin-top:2px">选中两个零件后执行操作</div>
       </div>
 
       <!-- ===== 3D 自由放置（新） ===== -->

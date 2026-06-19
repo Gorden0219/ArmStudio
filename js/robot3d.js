@@ -70,6 +70,7 @@ class Robot3D {
     this.pathGroup = new THREE.Group(); this.scene.add(this.pathGroup);
     this.kfHandleGroup = new THREE.Group(); this.scene.add(this.kfHandleGroup);
     this._dimGroup = new THREE.Group(); this.scene.add(this._dimGroup);
+    this._sketchPlaneGroup = new THREE.Group(); this.scene.add(this._sketchPlaneGroup);
     this.gizmo = new Gizmo(this.scene, 90);
 
     this.matLink = new THREE.MeshStandardMaterial({ color: 0x6b7b8c, metalness: 0.55, roughness: 0.45 });
@@ -520,5 +521,35 @@ class Robot3D {
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
   }
+
+  /* ---- 草图平面可视化 ---- */
+  showSketchPlane(plane, pos) {
+    [...this._sketchPlaneGroup.children].forEach((o) => this._sketchPlaneGroup.remove(o));
+    const grid = Shapes.sketchPlaneGrid(plane, 400, 8);
+    grid.position.copy(pos || new THREE.Vector3(0, 0, 0));
+    this._sketchPlaneGroup.add(grid);
+  }
+  hideSketchPlane() {
+    [...this._sketchPlaneGroup.children].forEach((o) => this._sketchPlaneGroup.remove(o));
+  }
+
+  /* ---- 选中多边形顶点高亮 ---- */
+  setVertexHandles(points, selIdx) {
+    [...this.kfHandleGroup.children].forEach((o) => this.kfHandleGroup.remove(o));
+    this._kfHandles = [];
+    (points || []).forEach((p, i) => {
+      const sel = i === selIdx;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(sel ? 10 : 7, 12, 10),
+        new THREE.MeshBasicMaterial({ color: sel ? 0xffce6b : 0x46d369 }));
+      m.position.set(p[0], 0, p[1]);
+      this.kfHandleGroup.add(m);
+      this._kfHandles.push({ mesh: m, kind: "kf", index: i });
+    });
+  }
+  clearVertexHandles() {
+    [...this.kfHandleGroup.children].forEach((o) => this.kfHandleGroup.remove(o));
+    this._kfHandles = [];
+  }
+
   _animate() { requestAnimationFrame(() => this._animate()); this.renderer.render(this.scene, this.camera); }
 }

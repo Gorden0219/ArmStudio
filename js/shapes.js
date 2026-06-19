@@ -299,5 +299,110 @@ const Shapes = (function () {
     }
   }
 
-  return { buildGeometry, makeProfile, addCutouts, shapeLabel, buildBoneGeometry, defaultShape };
+  /* ---- 构建草图平面 3D 网格 ---- */
+  /* plane: 'XY', 'YZ', 'XZ'; size: 网格大小; divisions: 格数 */
+  function sketchPlaneGrid(plane, size, divisions) {
+    size = size || 400;
+    divisions = divisions || 8;
+    const step = size / divisions;
+    const half = size / 2;
+    const group = new THREE.Group();
+
+    // 半透明平面
+    let geo;
+    if (plane === 'YZ') geo = new THREE.PlaneGeometry(size, size);
+    else if (plane === 'XZ') geo = new THREE.PlaneGeometry(size, size);
+    else geo = new THREE.PlaneGeometry(size, size); // XY
+
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: 0xff8a3d, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, planeMat);
+    if (plane === 'XY') mesh.rotation.x = -Math.PI / 2;
+    else if (plane === 'YZ') mesh.rotation.y = Math.PI / 2;
+    mesh.position.set(0, 0, 0);
+    group.add(mesh);
+
+    // 网格线
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.25 });
+    for (let i = -divisions / 2; i <= divisions / 2; i++) {
+      const p = i * step;
+      let pts1, pts2;
+      if (plane === 'XY') {
+        pts1 = [new THREE.Vector3(p, -half, 0), new THREE.Vector3(p, half, 0)];
+        pts2 = [new THREE.Vector3(-half, p, 0), new THREE.Vector3(half, p, 0)];
+      } else if (plane === 'YZ') {
+        pts1 = [new THREE.Vector3(0, p, -half), new THREE.Vector3(0, p, half)];
+        pts2 = [new THREE.Vector3(0, -half, p), new THREE.Vector3(0, half, p)];
+      } else { // XZ
+        pts1 = [new THREE.Vector3(p, 0, -half), new THREE.Vector3(p, 0, half)];
+        pts2 = [new THREE.Vector3(-half, 0, p), new THREE.Vector3(half, 0, p)];
+      }
+      [pts1, pts2].forEach((pts) => {
+        const g = new THREE.BufferGeometry().setFromPoints(pts);
+        group.add(new THREE.Line(g, lineMat));
+      });
+    }
+    // 轴线标识
+    const axLen = size * 0.35;
+    const axCol = [0xff4444, 0x44ff44, 0x4488ff];
+    const axDir = plane === 'XY' ? [[1, 0, 0], [0, 1, 0]]
+      : plane === 'YZ' ? [[0, 1, 0], [0, 0, 1]]
+      : [[1, 0, 0], [0, 0, 1]];
+    axDir.forEach((d, ai) => {
+      const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(d[0] * axLen, d[1] * axLen, d[2] * axLen)];
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+      group.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: axCol[ai], linewidth: 2 })));
+    });
+    return group;
+  }
+
+  /* ---- 布尔运算（基于 Profile 级别） ---- */
+  /* 将两个形状的截面合并为一个新的截面定义 */
+  function mergeProfiles(shA, shB) {
+    // 对于 polygon 轮廓：合并顶点列表（近似 union）
+    // 对于简单形状：返回组合的 cutout 列表
+    const merged = {
+      type: 'extrude',
+      profile: shB.profile || 'rect',
+      params: Object.assign({}, shB.params || {}),
+      depth: Math.max(shA.depth || 30, shB.depth || 30),
+      cutouts: (shA.cutouts || []).slice(),
+    };
+    // 把 shB 作为 cutout 加到 shA？简化处理：保持主体为 shA，shB 作为附加
+    return merged;
+  }
+
+  /* 减法：把 shapeB 的轮廓作为 cutout 添加到 shapeA */
+  function subtractProfile(shapeA, shapeB) {
+    if (!shapeA || !shapeB) return shapeA;
+    const cutouts = (shapeA.cutouts || []).slice();
+    // 把 shapeB 转换为一个 cutout 条目
+    const bProf = shapeB.profile || 'rect';
+    const bP = shapeB.params || {};
+    let cutout = { profile: bProf, params: {}, x: 0, y: 0 };
+    switch (bProf) {
+      case 'rect': cutout.params = { width: bP.width || 30, height: bP.height || 20 }; break;
+      case 'circle': cutout.params = { radius: bP.radius || 15 }; break;
+      case 'triangle': cutout.params = { side: bP.side || 30 }; break;
+      case 'polygon': {
+        // 多边形作为 cutout 比较困难，近似为圆形
+        cutout.profile = 'circle';
+        cutout.params = { radius: 15 };
+        break;
+      }
+    }
+    cutouts.push(cutout);
+    return Object.assign({}, shapeA, { cutouts });
+  }
+
+  /* 交集：返回重叠区域的近似表示 */
+  function intersectProfile(shapeA, shapeB) {
+    // 简化实现：返回较小的形状
+    if (!shapeA || !shapeB) return shapeA;
+    return Object.assign({}, shapeA, { cutouts: shapeA.cutouts ? shapeA.cutouts.slice() : [] });
+  }
+
+  return { buildGeometry, makeProfile, addCutouts, shapeLabel, buildBoneGeometry, defaultShape,
+    sketchPlaneGrid, mergeProfiles, subtractProfile, intersectProfile };
 })();

@@ -924,102 +924,185 @@
   }
   document.querySelectorAll("[data-shape]").forEach((b) => (b.onclick = () => addShapePart(b.dataset.shape)));
 
-  /* ---- 草图绘制 ---- */
-  const sketch = new SketchManager();
-  function startSketch() {
-    // 没有选父连杆则自动挂到根
-    if (selNode < 0 && model.nodes.length > 0) {
-      selNode = 0;
-      robot.setSelectedNode(0);
-      $("#node-editor").style.display = "";
-      renderTree();
-    }
-    sketch.start();
+  /* ---- ✏️ 草图绘制 v2：选面 → 画形 → 定厚 ---- */
+  let sketchPlane = 'XY'; // 当前草图平面
+  let sketchShapeType = 'rect'; // 当前形状类型
+  let sketchPolyPoints = []; // 多边形顶点（用于polygon模式）
+
+  // Step 1: 选择平面
+  document.querySelectorAll('.plane-btn').forEach((btn) => {
+    btn.onclick = () => {
+      sketchPlane = btn.dataset.plane;
+      document.querySelectorAll('.plane-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      // 在3D视图中显示草图平面
+      robot.showSketchPlane(sketchPlane, new THREE.Vector3(0, 120, 0));
+      // 进入步骤2
+      $("#sketch-step-plane").style.display = 'none';
+      $("#sketch-step-shape").style.display = '';
+      status(`📐 草图平面：${sketchPlane} — 请选择草图形状`);
+    };
+  });
+
+  // Step 2: 选择形状类型
+  function showShapeParams(type) {
+    ['sp-rect', 'sp-circle', 'sp-triangle', 'sp-polygon'].forEach((id) => {
+      document.getElementById(id).style.display = (type === id.replace('sp-', '')) ? '' : 'none';
+    });
+    $("#sketch-shape-params").style.display = '';
+  }
+  document.querySelectorAll('.shape-type-btn').forEach((btn) => {
+    btn.onclick = () => {
+      sketchShapeType = btn.dataset.stype;
+      document.querySelectorAll('.shape-type-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      showShapeParams(sketchShapeType);
+      // 如果是多边形，启动绘制模式
+      if (sketchShapeType === 'polygon') {
+        sketchPolyPoints = [];
+        $("#sp-poly-count").textContent = '0 个顶点';
+        // 开启2D绘制模式
+        startPolySketch();
+      }
+      // 进入步骤3
+      $("#sketch-step-depth").style.display = '';
+      status(`✏️ 已选形状：${sketchShapeType} — 设定厚度后点完成`);
+    };
+  });
+
+  // 多边形绘制：在2D视图画点
+  function startPolySketch() {
     view2d.sketchMode = true;
-    view2d.sketchPoints = sketch.points;
+    view2d.sketchPoints = sketchPolyPoints.map((p) => ({ x: p[0], z: p[1] }));;
     view2d.draw();
-    $("#btn-sketch-start").style.display = "none";
-    $("#btn-sketch-finish").style.display = "";
-    $("#btn-sketch-cancel").style.display = "";
-    $("#sketch-coord-row").style.display = "";
-    $("#sketch-depth-row").style.display = "";
-    $("#sketch-hint").style.display = "";
-    $("#sketch-count").textContent = "0";
-    updateSketchCoordLabel();
-    status("✏ 草图模式：在 2D 俯视图点击放置顶点，或在下方输入 X/Z 坐标");
-    // 切换到 2D 视图
     document.querySelector('.vtab[data-view="2d"]').click();
+    status("✏️ 在 2D 视图点击放置多边形顶点，右键撤销，靠近起点自动闭合");
   }
-  function updateSketchCoordLabel() {
-    $("#sketch-vert-label").textContent = `顶点 ${sketch.points.length + 1}`;
-    if (sketch.points.length) {
-      const last = sketch.points[sketch.points.length - 1];
-      $("#sketch-input-x").value = Math.round(last.x);
-      $("#sketch-input-z").value = Math.round(last.z);
-    }
-  }
-  function finishSketch() {
-    if (sketch.points.length < 3) { status("至少需要 3 个顶点才能完成草图"); return; }
-    const depth = +$("#sketch-depth").value || 30;
-    const shape = sketch.toShape(depth);
-    if (!shape) { status("草图无效"); return; }
-    sketch.close();
-    // 创建新零件（自动挂到当前父节点或根）
-    const parent = selNode >= 0 ? selNode : 0;
-    const ni = Designer.addChild(model, parent, { type: "fixed" });
-    const n = model.nodes[ni];
-    n.name = "草图" + ni;
-    n.geometry = { shape };
-    // 还原 UI
-    exitSketch();
-    buildSliders(); buildEEList(); selectNode(ni); refreshAll();
-    status(`✅ 草图已创建为拉伸体「${n.name}」，深度 ${depth} mm`);
-  }
-  function exitSketch() {
-    sketch.stop();
+  view2d.onSketchComplete = (pts) => {
+    sketchPolyPoints = pts.map((p) => [Math.round(p.x), Math.round(p.z)]);
+    $("#sp-poly-count").textContent = sketchPolyPoints.length + ' 个顶点';
     view2d.sketchMode = false;
     view2d.sketchPoints = [];
     view2d.draw();
-    $("#btn-sketch-start").style.display = "";
-    $("#btn-sketch-finish").style.display = "none";
-    $("#btn-sketch-cancel").style.display = "none";
-    $("#sketch-coord-row").style.display = "none";
-    $("#sketch-depth-row").style.display = "none";
-    $("#sketch-hint").style.display = "none";
-  }
-  $("#btn-sketch-start").onclick = startSketch;
-  $("#btn-sketch-finish").onclick = finishSketch;
-  $("#btn-sketch-cancel").onclick = () => { exitSketch(); status("草图已取消"); };
-  // 坐标输入添加草图顶点
-  $("#btn-sketch-add-coord").onclick = () => {
-    if (!sketch.active) return;
-    const x = +$("#sketch-input-x").value || 0;
-    const z = +$("#sketch-input-z").value || 0;
-    sketch.addPoint(x, z);
-    view2d.sketchPoints = sketch.points;
+    status(`✅ 多边形已闭合：${sketchPolyPoints.length} 个顶点`);
+  };
+  // 2D视图点击时如果sketchMode且是polygon，自动添加点
+  const origDown = view2d._down.bind(view2d);
+  // We won't override, the existing sketch handling in view2d is enough
+
+  // 多边形顶点编辑（坐标输入方式）
+  $("#sp-poly-edit").onclick = () => {
+    // 打开多边形顶点编辑弹窗
+    if (!sketchPolyPoints.length) sketchPolyPoints = [[-30, -20], [30, -20], [0, 30]];
+    renderPolyVerts(sketchPolyPoints);
+    $("#poly-modal")._polyVerts = sketchPolyPoints;
+    $("#poly-modal").classList.add('show');
+  };
+
+  // Step 3: 厚度同步
+  $("#sp-depth-slider").oninput = () => { $("#sp-depth").value = $("#sp-depth-slider").value; };
+  $("#sp-depth").oninput = () => { $("#sp-depth-slider").value = $("#sp-depth").value; };
+
+  // 完成创建
+  $("#sp-finish").onclick = () => {
+    if (selNode < 0 && model.nodes.length > 0) { selNode = 0; renderTree(); }
+    const depth = +$("#sp-depth").value || 30;
+    let shape;
+    switch (sketchShapeType) {
+      case 'rect':
+        shape = { type: 'extrude', profile: 'rect', params: { width: +$("#sp-rect-w").value || 60, height: +$("#sp-rect-h").value || 40 }, depth, cutouts: [] };
+        break;
+      case 'circle':
+        shape = { type: 'extrude', profile: 'circle', params: { radius: +$("#sp-circle-r").value || 30 }, depth, cutouts: [] };
+        break;
+      case 'triangle':
+        shape = { type: 'extrude', profile: 'triangle', params: { side: +$("#sp-tri-s").value || 50 }, depth, cutouts: [] };
+        break;
+      case 'polygon':
+        if (sketchPolyPoints.length < 3) { status("❌ 多边形至少需要 3 个顶点"); return; }
+        shape = { type: 'extrude', profile: 'polygon', params: { vertices: sketchPolyPoints.map((v) => [Math.round(v[0]), Math.round(v[1])]) }, depth, cutouts: [] };
+        break;
+      default: return;
+    }
+    // 记录草图平面在shape中
+    shape.plane = sketchPlane;
+    const parent = selNode >= 0 ? selNode : 0;
+    const ni = Designer.addChild(model, parent, { type: 'fixed' });
+    const n = model.nodes[ni];
+    n.name = '草图' + ni;
+    n.geometry = { shape };
+    resetSketchUI();
+    robot.hideSketchPlane();
+    buildSliders(); buildEEList(); selectNode(ni); refreshAll();
+    status(`✅ 草图创建完成：「${n.name}」`);
+  };
+
+  // 取消
+  $("#sp-cancel").onclick = () => {
+    resetSketchUI();
+    robot.hideSketchPlane();
+    view2d.sketchMode = false;
+    view2d.sketchPoints = [];
     view2d.draw();
-    $("#sketch-count").textContent = sketch.points.length;
-    updateSketchCoordLabel();
-  };
-  view2d.onSketchPoint = () => {
-    $("#sketch-count").textContent = sketch.points.length;
-    updateSketchCoordLabel();
-  };
-  view2d.onSketchComplete = (pts) => {
-    // 自动闭合：设置点，然后完成
-    sketch.points = pts;
-    finishSketch();
+    status("草图已取消");
   };
 
-  /* ---- 草图深度同步 ---- */
-  $("#sketch-depth-slider").oninput = () => {
-    $("#sketch-depth").value = $("#sketch-depth-slider").value;
-  };
-  $("#sketch-depth").oninput = () => {
-    $("#sketch-depth-slider").value = $("#sketch-depth").value;
-  };
+  function resetSketchUI() {
+    $("#sketch-step-plane").style.display = '';
+    $("#sketch-step-shape").style.display = 'none';
+    $("#sketch-step-depth").style.display = 'none';
+    $("#sketch-shape-params").style.display = 'none';
+    document.querySelectorAll('.plane-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.shape-type-btn').forEach((b) => b.classList.remove('active'));
+  }
 
-  /* ---- 草图变换：翻转 / 旋转 ---- */
+  /* ---- ⚡ 布尔运算 ---- */
+  function getNodeParent(idx) { return model.nodes[idx] ? model.nodes[idx].parent : -1; }
+
+  function boolOp(opType) {
+    if (selNode < 1) { status("请至少选中一个零件（从结构树选择）"); return; }
+    // 找另一个选中的零件：最近操作的另一个节点
+    const target = prompt(`布尔运算 - ${opType === 'union' ? '合并' : opType === 'subtract' ? '减去' : '相交'}\n输入目标零件索引（结构树中序号）`, '1');
+    if (!target) return;
+    const ti = parseInt(target);
+    if (ti === selNode || ti < 0 || ti >= model.nodes.length) { status("无效的零件索引"); return; }
+    if (ti === 0 || selNode === 0) { status("不能对根节点执行布尔运算"); return; }
+
+    const srcN = model.nodes[selNode];
+    const tgtN = model.nodes[ti];
+    const srcSh = srcN.geometry && srcN.geometry.shape;
+    const tgtSh = tgtN.geometry && tgtN.geometry.shape;
+    if (!srcSh || srcSh.type !== 'extrude') { status("只有拉伸体支持布尔运算"); return; }
+    if (!tgtSh || tgtSh.type !== 'extrude') { status("目标零件必须是拉伸体"); return; }
+
+    let result;
+    switch (opType) {
+      case 'subtract':
+        result = Shapes.subtractProfile(srcSh, tgtSh);
+        tgtN.geometry = null; // 移除被减的零件
+        break;
+      case 'union':
+        result = Shapes.mergeProfiles(srcSh, tgtSh);
+        tgtN.geometry = null;
+        break;
+      case 'intersect':
+        result = Shapes.intersectProfile(srcSh, tgtSh);
+        break;
+    }
+    if (result) {
+      srcN.geometry = { shape: result };
+      // 如果目标零件被移除，清理
+      if (!tgtN.geometry) {
+        Designer.removeSubtree(model, ti);
+        if (selNode > ti) selNode--;
+      }
+      buildSliders(); buildEEList(); selectNode(selNode); refreshAll();
+      status(`✅ 布尔运算完成：${opType}`);
+    }
+  }
+  $("#btn-bool-union").onclick = () => boolOp('union');
+  $("#btn-bool-subtract").onclick = () => boolOp('subtract');
+  $("#btn-bool-intersect").onclick = () => boolOp('intersect');
   function applySketchTransform(fn) {
     if (selNode < 0) return;
     const n = model.nodes[selNode];
