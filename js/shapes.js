@@ -1,6 +1,7 @@
 /* ============================================================
- * shapes.js — 增强的 3D 形状系统
- *   支持 box / cylinder / sphere / extrude 及其挖孔
+ * shapes.js — 增强的 3D 形状系统 v3
+ *   支持 box / cylinder / sphere / cone / torus / pyramid
+ *        wedge / pipe / gear / extrude 及其挖孔
  *   extrude 截面: rect / circle / triangle / polygon
  * ============================================================ */
 
@@ -41,7 +42,6 @@ const Shapes = (function () {
       case 'polygon': {
         const verts = params.vertices;
         if (!verts || verts.length < 3) {
-          // fallback to rect
           return makeProfile('rect', { width: 40, height: 30 });
         }
         sh.moveTo(verts[0][0], verts[0][1]);
@@ -49,6 +49,45 @@ const Shapes = (function () {
           sh.lineTo(verts[i][0], verts[i][1]);
         }
         sh.closePath();
+        return sh;
+      }
+      case 'gear': {
+        // 齿轮轮廓
+        const r = params.radius || 30;
+        const teeth = params.teeth || 12;
+        const toothDepth = params.toothDepth || 6;
+        const innerR = r - toothDepth;
+        const segsPerTooth = 6;
+        const total = teeth * segsPerTooth;
+        const da = (Math.PI * 2) / total;
+        for (let i = 0; i < total; i++) {
+          const a = i * da - Math.PI / 2;
+          const isTooth = (i % segsPerTooth) < 3; // 3 segs out, 3 segs in
+          const cr = isTooth ? r : innerR;
+          const fn = i === 0 ? 'moveTo' : 'lineTo';
+          sh[fn](Math.cos(a) * cr, Math.sin(a) * cr);
+        }
+        sh.closePath();
+        return sh;
+      }
+      case 'ring': {
+        const rOuter = params.radius || 30;
+        const rInner = params.innerRadius || 15;
+        const segs = 32;
+        // 外圆
+        sh.moveTo(rOuter, 0);
+        for (let i = 1; i <= segs; i++) {
+          const a = (i / segs) * Math.PI * 2;
+          sh.lineTo(Math.cos(a) * rOuter, Math.sin(a) * rOuter);
+        }
+        // 内圆（作为孔洞）
+        const hole = new THREE.Path();
+        hole.moveTo(rInner, 0);
+        for (let i = segs; i >= 0; i--) {
+          const a = (i / segs) * Math.PI * 2;
+          hole.lineTo(Math.cos(a) * rInner, Math.sin(a) * rInner);
+        }
+        sh.holes.push(hole);
         return sh;
       }
       default:
@@ -98,6 +137,38 @@ const Shapes = (function () {
     });
   }
 
+  /* ---- 构建楔形（直角三棱柱）自定义几何 ---- */
+  function buildWedgeGeometry(w, h, d) {
+    // w=X方向宽, h=Y方向高, d=Z方向深
+    // 楔形：底部是矩形 w×d，顶部是一条线在 x=0 处
+    const hw = w / 2, hh = h, hd = d / 2;
+    const verts = [
+      // 底部矩形
+      [-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd],
+      // 顶部线（沿 Z 方向在 x=0, y=h）
+      [0, hh, -hd], [0, hh, hd],
+    ];
+    const idx = [
+      // 底面
+      0, 1, 2, 0, 2, 3,
+      // 垂直面（x正方向）
+      1, 4, 5, 1, 5, 2,
+      // 倾斜面（x负方向）
+      0, 3, 5, 0, 5, 4,
+      // 侧面（z正方向）
+      3, 2, 5,
+      // 侧面（z负方向）
+      0, 4, 1,
+    ];
+    const geo = new THREE.BufferGeometry();
+    const positions = [];
+    verts.forEach((v) => positions.push(v[0], v[1], v[2]));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
   /* ---- 从 shape 定义构建 THREE.BufferGeometry ---- */
   function buildGeometry(opts) {
     if (!opts) return null;
@@ -112,7 +183,42 @@ const Shapes = (function () {
         return new THREE.CylinderGeometry(p.radiusTop ?? (p.radius || 20), p.radiusBottom ?? (p.radius || 20), p.height || 40, 24);
 
       case 'sphere':
-        return new THREE.SphereGeometry(p.radius || 25, 18, 14);
+        return new THREE.SphereGeometry(p.radius || 25, 24, 18);
+
+      case 'cone':
+        return new THREE.ConeGeometry(p.radius || 20, p.height || 40, 24);
+
+      case 'torus':
+        return new THREE.TorusGeometry(p.radius || 30, p.tube || 10, 16, 24);
+
+      case 'pyramid':
+        return new THREE.ConeGeometry(p.width / 2 || 20, p.height || 30, 4);
+
+      case 'wedge': {
+        const w = p.width || 40, h = p.height || 30, d = p.depth || 40;
+        return buildWedgeGeometry(w, h, d);
+      }
+
+      case 'pipe': {
+        // 管子 = 环状拉伸
+        const profile = 'ring';
+        const depth = p.height || 30;
+        const shape = makeProfile(profile, p);
+        const cfg = { depth, bevelEnabled: false };
+        const geo = new THREE.ExtrudeGeometry(shape, cfg);
+        geo.translate(0, 0, -depth / 2);
+        return geo;
+      }
+
+      case 'gear': {
+        // 齿轮 = 齿形轮廓拉伸
+        const depth = p.height || 20;
+        const shape = makeProfile('gear', p);
+        const cfg = { depth, bevelEnabled: false };
+        const geo = new THREE.ExtrudeGeometry(shape, cfg);
+        geo.translate(0, 0, -depth / 2);
+        return geo;
+      }
 
       case 'triangle':
       case 'extrude': {
@@ -128,7 +234,6 @@ const Shapes = (function () {
           bevelSegments: 2,
         };
         const geo = new THREE.ExtrudeGeometry(shape, cfg);
-        // 将几何居中（ExtrudeGeometry 的 Z 范围是 0~depth）
         geo.translate(0, 0, -depth / 2);
         return geo;
       }
@@ -144,18 +249,18 @@ const Shapes = (function () {
     const type = opts.type || 'box';
     const p = opts.params || {};
     switch (type) {
-      case 'box':
-        return `方块 ${p.width||40}×${p.depth||40}×${p.height||30}`;
-      case 'cylinder':
-        return `圆柱 r=${p.radius||20} h=${p.height||40}`;
-      case 'sphere':
-        return `球体 r=${p.radius||25}`;
-      case 'extrude':
-        return `拉伸(${opts.profile||'rect'}) d=${opts.depth||30}`;
-      case 'triangle':
-        return `三角柱 a=${p.side||40}`;
-      default:
-        return type;
+      case 'box': return `方块 ${p.width||40}×${p.depth||40}×${p.height||30}`;
+      case 'cylinder': return `圆柱 r=${p.radius||20} h=${p.height||40}`;
+      case 'sphere': return `球体 r=${p.radius||25}`;
+      case 'cone': return `圆锥 r=${p.radius||20} h=${p.height||40}`;
+      case 'torus': return `圆环 R=${p.radius||30} t=${p.tube||10}`;
+      case 'pyramid': return `棱锥 w=${p.width||40} h=${p.height||30}`;
+      case 'wedge': return `楔形 ${p.width||40}×${p.depth||40}×${p.height||30}`;
+      case 'pipe': return `管材 R=${p.radius||30} r=${p.innerRadius||15} h=${p.height||30}`;
+      case 'gear': return `齿轮 r=${p.radius||30} t=${p.teeth||12}`;
+      case 'extrude': return `拉伸(${opts.profile||'rect'}) d=${opts.depth||30}`;
+      case 'triangle': return `三角柱 a=${p.side||40}`;
+      default: return type;
     }
   }
 
@@ -169,7 +274,6 @@ const Shapes = (function () {
         rz: (ls.d || 16) / 1,
       };
     }
-    // cylinder default
     return {
       geo: new THREE.CylinderGeometry(1, 1, 1, 14),
       rx: ls.radius || 9,
@@ -180,18 +284,18 @@ const Shapes = (function () {
   /* ---- 生成默认的 shape 配置 ---- */
   function defaultShape(type) {
     switch (type) {
-      case 'box':
-        return { type: 'box', params: { width: 40, height: 30, depth: 40 } };
-      case 'cylinder':
-        return { type: 'cylinder', params: { radius: 20, height: 40 } };
-      case 'sphere':
-        return { type: 'sphere', params: { radius: 25 } };
-      case 'triangle':
-        return { type: 'extrude', profile: 'triangle', params: { side: 40 }, depth: 30, cutouts: [] };
-      case 'extrude':
-        return { type: 'extrude', profile: 'rect', params: { width: 40, height: 30 }, depth: 30, cutouts: [] };
-      default:
-        return { type: 'box', params: { width: 40, height: 30, depth: 40 } };
+      case 'box': return { type: 'box', params: { width: 40, height: 30, depth: 40 } };
+      case 'cylinder': return { type: 'cylinder', params: { radius: 20, height: 40 } };
+      case 'sphere': return { type: 'sphere', params: { radius: 25 } };
+      case 'cone': return { type: 'cone', params: { radius: 20, height: 40 } };
+      case 'torus': return { type: 'torus', params: { radius: 30, tube: 10 } };
+      case 'pyramid': return { type: 'pyramid', params: { width: 40, height: 30 } };
+      case 'wedge': return { type: 'wedge', params: { width: 40, depth: 40, height: 30 } };
+      case 'pipe': return { type: 'pipe', params: { radius: 30, innerRadius: 15, height: 30 } };
+      case 'gear': return { type: 'gear', params: { radius: 30, teeth: 12, toothDepth: 6 }, height: 20 };
+      case 'triangle': return { type: 'extrude', profile: 'triangle', params: { side: 40 }, depth: 30, cutouts: [] };
+      case 'extrude': return { type: 'extrude', profile: 'rect', params: { width: 40, height: 30 }, depth: 30, cutouts: [] };
+      default: return { type: 'box', params: { width: 40, height: 30, depth: 40 } };
     }
   }
 

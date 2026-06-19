@@ -14,7 +14,7 @@ const Designer = {
     const names = { revolute: "旋转关节", prismatic: "移动关节", fixed: "骨骼", tool: "工具" };
     const shapeName = opts.shape || null;
     // 带形状的新零件默认名
-    const shapeLabels = { box: "方块", cylinder: "圆柱", sphere: "球体", extrude: "拉伸体" };
+    const shapeLabels = { box: "方块", cylinder: "圆柱", sphere: "球体", cone: "圆锥", torus: "圆环", pyramid: "棱锥", wedge: "楔形", pipe: "管材", gear: "齿轮", extrude: "拉伸体" };
     const baseName = shapeName ? (shapeLabels[shapeName] || "零件") : (names[opts.type] || "连杆");
     const node = {
       name: baseName + model.nodes.length,
@@ -134,4 +134,76 @@ const Designer = {
 
   /* 把当前姿态设为初始姿态 */
   setHomeToCurrent(model) { model.home = model.q.slice(); },
+
+  /* ---- 镜像 ---- */
+  /* plane: 'XY'|'YZ'|'XZ' — 镜像对称平面 */
+  mirrorPart(model, idx, plane) {
+    const src = model.nodes[idx];
+    const ni = this.addChild(model, src.parent, { type: "fixed" });
+    const dst = model.nodes[ni];
+    dst.name = src.name + "_mirror";
+    dst.color = src.color;
+    dst.linkShape = src.linkShape ? Object.assign({}, src.linkShape) : null;
+    dst.geometry = src.geometry ? JSON.parse(JSON.stringify(src.geometry)) : null;
+    dst.endEffector = src.endEffector;
+    // 镜像原点
+    const o = src.joint.origin;
+    if (plane === "XY") dst.joint.origin.set(o.x, o.y, -o.z);
+    else if (plane === "YZ") dst.joint.origin.set(-o.x, o.y, o.z);
+    else if (plane === "XZ") dst.joint.origin.set(o.x, -o.y, o.z);
+    // 镜像朝向(旋转)
+    const q = src.rot;
+    if (plane === "XY") dst.rot.set(q.x, q.y, -q.z, q.w);
+    else if (plane === "YZ") dst.rot.set(-q.x, q.y, q.z, q.w);
+    else if (plane === "XZ") dst.rot.set(q.x, -q.y, q.z, q.w);
+    return ni;
+  },
+
+  /* ---- 线性阵列 ---- */
+  patternLinear(model, idx, count, dx, dy, dz) {
+    if (count < 2) return [idx];
+    const indices = [idx];
+    const src = model.nodes[idx];
+    // 排除末端标记：父节点仍是末端
+    for (let k = 1; k < count; k++) {
+      const ni = this.addChild(model, src.parent, { type: "fixed" });
+      const dst = model.nodes[ni];
+      dst.name = src.name + "_" + (k + 1);
+      dst.color = src.color;
+      dst.linkShape = src.linkShape ? Object.assign({}, src.linkShape) : null;
+      dst.geometry = src.geometry ? JSON.parse(JSON.stringify(src.geometry)) : null;
+      dst.endEffector = src.endEffector;
+      dst.joint.origin.set(src.joint.origin.x + dx * k, src.joint.origin.y + dy * k, src.joint.origin.z + dz * k);
+      dst.rot.copy(src.rot);
+      indices.push(ni);
+    }
+    return indices;
+  },
+
+  /* ---- 圆周阵列 ---- */
+  patternCircular(model, idx, count, centerX, centerZ, startAngle, totalAngle) {
+    if (count < 2) return [idx];
+    const indices = [idx];
+    const src = model.nodes[idx];
+    const o = src.joint.origin;
+    const cx = o.x, cz = o.z;
+    const sa = (startAngle || 0) * Math.PI / 180;
+    const ta = (totalAngle || 360) * Math.PI / 180;
+    for (let k = 1; k < count; k++) {
+      const angle = sa + (ta * k) / count;
+      const nx = cx + (o.x - cx) * Math.cos(angle) - (o.z - cz) * Math.sin(angle);
+      const nz = cz + (o.x - cx) * Math.sin(angle) + (o.z - cz) * Math.cos(angle);
+      const ni = this.addChild(model, src.parent, { type: "fixed" });
+      const dst = model.nodes[ni];
+      dst.name = src.name + "_" + (k + 1);
+      dst.color = src.color;
+      dst.linkShape = src.linkShape ? Object.assign({}, src.linkShape) : null;
+      dst.geometry = src.geometry ? JSON.parse(JSON.stringify(src.geometry)) : null;
+      dst.endEffector = src.endEffector;
+      dst.joint.origin.set(nx, o.y, nz);
+      dst.rot.copy(src.rot);
+      indices.push(ni);
+    }
+    return indices;
+  },
 };

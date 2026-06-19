@@ -64,6 +64,8 @@ const Kin = (function () {
         geometry: n.geometry || null,
         linkShape: n.linkShape || null,   // {type:'cylinder'|'box', radius?, w?, d?}
         color: n.color || null,           // 外观颜色 '#rrggbb'
+        materialType: n.materialType || null, // 'standard'|'metallic'|'matte'|'glossy'|'emissive'
+        opacity: n.opacity != null ? n.opacity : null,
         endEffector: !!n.endEffector,
       };
     }
@@ -178,6 +180,7 @@ const Kin = (function () {
               ? n.joint.limit.map((x) => +deg(x).toFixed(1)) : n.joint.limit.slice(),
           },
           geometry: n.geometry, linkShape: n.linkShape, color: n.color, endEffector: n.endEffector,
+          materialType: n.materialType, opacity: n.opacity,
         })),
       };
     }

@@ -22,8 +22,10 @@ class Robot3D {
     this.onGizmoRotate = null;    // (i, worldAxis, dAngle)
     this.onGizmoEnd = null;
     this.clickMode = false;       // 点击取点模式
+    this.cadClickMode = false;    // CAD 自由放置模式
     this.clickPlaneY = 120;       // 取点所在水平面高度(mm)
     this.onClickPoint = null;     // (worldPoint) => {}
+    this.onCadClickPoint = null;  // CAD 放置回调 (worldPoint) => {}
     this.onPickKf = null;         // 选中某关键帧路点 (i)
     this.onKfDrag = null;         // 拖动关键帧路点 (i, worldPoint)
     this.onKfDragEnd = null;      // (i)
@@ -35,6 +37,8 @@ class Robot3D {
 
     this._dynamic = [];          // 每帧重建的网格
     this._handles = [];          // 可拾取的句柄 {mesh, kind:'ee'|'node', index}
+    this._pickableMeshes = [];   // 设计模式中可直接拖拽的几何体
+    this.showDimensions = false;
 
     this._initScene();
     this._initPick();
@@ -65,6 +69,7 @@ class Robot3D {
 
     this.pathGroup = new THREE.Group(); this.scene.add(this.pathGroup);
     this.kfHandleGroup = new THREE.Group(); this.scene.add(this.kfHandleGroup);
+    this._dimGroup = new THREE.Group(); this.scene.add(this._dimGroup);
     this.gizmo = new Gizmo(this.scene, 90);
 
     this.matLink = new THREE.MeshStandardMaterial({ color: 0x6b7b8c, metalness: 0.55, roughness: 0.45 });
@@ -107,6 +112,12 @@ class Robot3D {
     this._dynamic = [];
     [...this.handleGroup.children].forEach((o) => this.handleGroup.remove(o));
     this._handles = [];
+    [...this.kfHandleGroup.children].forEach((o) => this.kfHandleGroup.remove(o));
+    this._kfHandles = [];
+    if (!this.showDimensions) {
+      [...this._dimGroup.children].forEach((o) => this._dimGroup.remove(o));
+    }
+    this._pickableMeshes = [];
 
     // 连杆 + 关节
     m.nodes.forEach((n, i) => {
@@ -118,27 +129,33 @@ class Robot3D {
           if (n.geometry.type === 'box') g = new THREE.BoxGeometry(...n.geometry.size);
           else if (n.geometry.type === 'cylinder') g = new THREE.CylinderGeometry(n.geometry.size[0], n.geometry.size[0], n.geometry.size[1], 24);
           else g = new THREE.SphereGeometry(n.geometry.size[0], 18, 14);
-          const mesh = new THREE.Mesh(g, this._mat(n.color) || this.matBody);
+          const mesh = new THREE.Mesh(g, this._matNode(n) || this.matBody);
           mesh.position.copy(fk.jointPos[i]);
           mesh.quaternion.setFromRotationMatrix(fk.world[i]);
+          mesh.userData.nodeIndex = i;
           this.armGroup.add(mesh); this._dynamic.push(mesh);
+          this._pickableMeshes.push(mesh);
         } else if (n.geometry.shape) {
           // 新格式：完整 shape 定义 → Shapes.buildGeometry
           const g = Shapes.buildGeometry(n.geometry.shape);
           if (g) {
-            const mesh = new THREE.Mesh(g, this._mat(n.color) || this.matBody);
+            const mesh = new THREE.Mesh(g, this._matNode(n) || this.matBody);
             mesh.position.copy(fk.jointPos[i]);
             mesh.quaternion.setFromRotationMatrix(fk.world[i]);
+            mesh.userData.nodeIndex = i;
             this.armGroup.add(mesh); this._dynamic.push(mesh);
+            this._pickableMeshes.push(mesh);
           }
         }
       }
       // 连杆骨架（父→本节点），按 linkShape 渲染真实形状
       if (n.parent >= 0) {
         const b = Shapes.buildBoneGeometry(n.linkShape);
-        const link = new THREE.Mesh(b.geo, this._mat(n.color) || this.matLink);
+        const link = new THREE.Mesh(b.geo, this._matNode(n) || this.matLink);
         this._orient(link, fk.linkStart[i], fk.jointPos[i], b.rx, b.rz);
+        link.userData.nodeIndex = i;
         this.armGroup.add(link); this._dynamic.push(link);
+        this._pickableMeshes.push(link);
       }
       // 关节球
       if (m.isMovable(i)) {
@@ -197,10 +214,35 @@ class Robot3D {
     } else { this.gizmo.hide(); }
   }
   setGizmoMode(m) { this.gizmo.setMode(m); }
-  _mat(color) {
-    if (!color) return null;
-    if (!this._matCache[color]) this._matCache[color] = new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.5 });
-    return this._matCache[color];
+  _matNode(n) {
+    if (!n || !n.color) return null;
+    const c = n.color;
+    // Initialize cache entry if needed
+    if (!this._matCache[c] || !this._matCache[c]._isNodeCache) {
+      if (this._matCache[c] && this._matCache[c] instanceof THREE.Material) {
+        // legacy single material
+        this._matCache[c] = { _isNodeCache: true, __default: this._matCache[c] };
+      } else {
+        this._matCache[c] = { _isNodeCache: true };
+      }
+    }
+    const cache = this._matCache[c];
+    const mt = n.materialType || 'standard';
+    const op = n.opacity;
+    const key = mt + '_' + ((op != null) ? op : 1);
+    if (cache[key]) return cache[key];
+    const base = { color: c };
+    if (op != null && op < 1) { base.transparent = true; base.opacity = Math.max(0.05, op); }
+    let mat;
+    switch (mt) {
+      case 'metallic': mat = new THREE.MeshStandardMaterial(Object.assign({}, base, { metalness: 0.85, roughness: 0.15 })); break;
+      case 'matte': mat = new THREE.MeshStandardMaterial(Object.assign({}, base, { metalness: 0.0, roughness: 0.9 })); break;
+      case 'glossy': mat = new THREE.MeshStandardMaterial(Object.assign({}, base, { metalness: 0.3, roughness: 0.05 })); break;
+      case 'emissive': mat = new THREE.MeshStandardMaterial(Object.assign({}, base, { metalness: 0.2, roughness: 0.4, emissive: c, emissiveIntensity: 0.35 })); break;
+      default: mat = new THREE.MeshStandardMaterial(Object.assign({}, base, { metalness: 0.5, roughness: 0.5 })); break;
+    }
+    cache[key] = mat;
+    return mat;
   }
 
   setSelectedNode(i) { this._selNode = i; this.rebuild(); }
@@ -220,7 +262,16 @@ class Robot3D {
     const pickHandle = () => {
       const all = this._handles.concat(this._kfHandles);
       const hits = ray.intersectObjects(all.map((h) => h.mesh));
-      return hits.length ? all.find((h) => h.mesh === hits[0].object) : null;
+      if (hits.length) return all.find((h) => h.mesh === hits[0].object);
+      // 设计模式：直接点击几何体表面也可选中拖拽
+      if (this.mode === "design" && this._pickableMeshes.length) {
+        const meshHits = ray.intersectObjects(this._pickableMeshes);
+        if (meshHits.length) {
+          const ni = meshHits[0].object.userData.nodeIndex;
+          if (ni != null) return { mesh: meshHits[0].object, kind: "node", index: ni };
+        }
+      }
+      return null;
     };
     const pickGizmo = () => {
       if (!(this.mode === "design" && this.gizmo.visible)) return null;
@@ -263,8 +314,10 @@ class Robot3D {
       if (!h) {
         // 点击空白处：取消选中的关节
         if (this._selJoint >= 0 && this.onPickJoint) { this._selJoint = -1; this.onPickJoint(-1); }
-        // 点击取点模式：记录候选，松开时若几乎没移动则在水平面取点
-        if (this.clickMode) drag = { type: "click", x: e.clientX, y: e.clientY };
+        // CAD 自由放置模式（设计模式中）
+        if (this.cadClickMode) drag = { type: "cadclick", x: e.clientX, y: e.clientY };
+        // 点击取点模式（动作模式中）
+        else if (this.clickMode) drag = { type: "click", x: e.clientX, y: e.clientY };
         return;
       }
       // 关节句柄：选中并启动拖拽
@@ -330,6 +383,12 @@ class Robot3D {
           ndc(e); ray.setFromCamera(mouse, this.camera);
           const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.clickPlaneY); // 水平面 y=clickPlaneY
           if (ray.ray.intersectPlane(plane, hit) && this.onClickPoint) this.onClickPoint(hit.clone());
+        }
+        // CAD 自由放置点击
+        if (drag.type === "cadclick" && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) {
+          ndc(e); ray.setFromCamera(mouse, this.camera);
+          const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.clickPlaneY);
+          if (ray.ray.intersectPlane(plane, hit) && this.onCadClickPoint) this.onCadClickPoint(hit.clone());
         }
       }
       drag = null;
@@ -416,6 +475,43 @@ class Robot3D {
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(90, 22, 1);
     return sprite;
+  }
+
+  /* 在选中零件周围显示尺寸标注 */
+  updateDimensions(selIdx) {
+    [...this._dimGroup.children].forEach((o) => this._dimGroup.remove(o));
+    if (!this.showDimensions || selIdx < 0 || !this.model) return;
+    const m = this.model, fk = m.forward(m.q);
+    const n = m.nodes[selIdx];
+    if (!n) return;
+    const pos = fk.jointPos[selIdx];
+    // 根据几何估算外框
+    let halfW = 30, halfD = 30, halfH = 20;
+    if (n.geometry && n.geometry.shape) {
+      const p = n.geometry.shape.params || {};
+      switch (n.geometry.shape.type) {
+        case "box": halfW = (p.width || 40) / 2; halfD = (p.depth || 40) / 2; halfH = (p.height || 30) / 2; break;
+        case "cylinder": halfW = p.radius || 20; halfD = p.radius || 20; halfH = (p.height || 40) / 2; break;
+        case "sphere": halfW = halfD = halfH = p.radius || 25; break;
+        case "extrude": halfW = 30; halfD = 30; halfH = (n.geometry.shape.depth || 30) / 2; break;
+      }
+    } else if (n.linkShape) {
+      const ls = n.linkShape;
+      if (ls.type === "box") { halfW = (ls.w || 16) / 2; halfD = (ls.d || 16) / 2; }
+      else { halfW = halfD = ls.radius || 9; }
+    }
+    const labels = [
+      { text: `W ${(halfW * 2).toFixed(0)} mm`, pos: new THREE.Vector3(pos.x + halfW + 20, pos.y, pos.z) },
+      { text: `D ${(halfD * 2).toFixed(0)} mm`, pos: new THREE.Vector3(pos.x, pos.y, pos.z + halfD + 20) },
+      { text: `H ${(halfH * 2).toFixed(0)} mm`, pos: new THREE.Vector3(pos.x, pos.y + halfH + 20, pos.z) },
+      { text: `(${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}, ${pos.z.toFixed(0)})`, pos: new THREE.Vector3(pos.x, pos.y - halfH - 20, pos.z) },
+    ];
+    labels.forEach((l) => {
+      const sprite = this._makeLabel(l.text, false);
+      sprite.position.copy(l.pos);
+      sprite.scale.set(120, 26, 1);
+      this._dimGroup.add(sprite);
+    });
   }
 
   _resize() {

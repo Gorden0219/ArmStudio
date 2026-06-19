@@ -23,12 +23,21 @@ class View2D {
     this.selFrame = -1;
     this._drag = false;
     this._kfDrag = -1;
+    this._sketchDragIdx = -1;
+
+    // 草图模式
+    this.sketchMode = false;
+    this.sketchPoints = [];    // [{x, z}] 世界坐标
+    this.sketchMouse = null;   // 跟随鼠标的临时点
+    this.onSketchPoint = null; // () => {} 有点变化时
+    this.onSketchComplete = null; // (points[]) => {}
 
     canvas.addEventListener("pointerdown", (e) => this._down(e));
-    canvas.addEventListener("pointermove", (e) => this._move(e));
+    canvas.addEventListener("pointermove", (e) => { this._move(e); if (this.sketchMode) { this.sketchMouse = this._px(e); this.draw(); } });
+    canvas.addEventListener("contextmenu", (e) => { if (this.sketchMode && this.sketchPoints.length) { e.preventDefault(); this.sketchPoints.pop(); if (this.onSketchPoint) this.onSketchPoint(); this.draw(); } });
     window.addEventListener("pointerup", () => {
       if (this._kfDrag >= 0 && this.onKfDragEnd2D) this.onKfDragEnd2D();
-      this._drag = false; this._kfDrag = -1;
+      this._drag = false; this._kfDrag = -1; this._sketchDragIdx = -1;
     });
     heightSlider.addEventListener("input", () => {
       this.workH = +heightSlider.value; heightVal.textContent = this.workH;
@@ -57,6 +66,31 @@ class View2D {
   }
   _down(e) {
     const p = this._px(e);
+    // 草图模式：添加/完成顶点
+    if (this.sketchMode) {
+      const w = this.s2w(p.x, p.y);
+      if (this.sketchPoints.length >= 3) {
+        const f = this.sketchPoints[0];
+        if (Math.hypot(w.x - f.x, w.z - f.z) < 20) {
+          // 靠近起点 → 闭合草图
+          if (this.onSketchComplete) this.onSketchComplete(this.sketchPoints);
+          return;
+        }
+      }
+      // 检查是否点击在已有顶点上拖拽移动
+      for (let i = 0; i < this.sketchPoints.length; i++) {
+        const s = this.w2s(this.sketchPoints[i].x, this.sketchPoints[i].z);
+        if (Math.hypot(s.x - p.x, s.y - p.y) < 10) {
+          this._sketchDragIdx = i;
+          this._drag = true;
+          return;
+        }
+      }
+      this.sketchPoints.push({ x: w.x, z: w.z });
+      if (this.onSketchPoint) this.onSketchPoint();
+      this.draw();
+      return;
+    }
     const kfi = this._hitKf(p.x, p.y);
     if (kfi >= 0) { this._kfDrag = kfi; if (this.onPickKf2D) this.onPickKf2D(kfi); return; }
     if (this.activeEE == null) return;
@@ -66,6 +100,12 @@ class View2D {
   }
   _move(e) {
     const p = this._px(e), w = this.s2w(p.x, p.y);
+    if (this._sketchDragIdx >= 0 && this.sketchMode) {
+      this.sketchPoints[this._sketchDragIdx] = { x: w.x, z: w.z };
+      if (this.onSketchPoint) this.onSketchPoint();
+      this.draw();
+      return;
+    }
     if (this._kfDrag >= 0) { if (this.onKfDrag2D) this.onKfDrag2D(this._kfDrag, new THREE.Vector3(w.x, this.workH, w.z)); return; }
     if (!this._drag || this.activeEE == null) return;
     if (this.onMoveEE) this.onMoveEE(new THREE.Vector3(w.x, this.workH, w.z));
@@ -121,6 +161,55 @@ class View2D {
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText(`(${p.x.toFixed(0)},${p.z.toFixed(0)})`, s.x, s.y + 14);
+      });
+    }
+
+    // 草图
+    if (this.sketchMode && this.sketchPoints.length) {
+      ctx.strokeStyle = "#ff8a3d"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      // 画实线（顶点之间的连线）
+      ctx.beginPath();
+      const s0 = this.w2s(this.sketchPoints[0].x, this.sketchPoints[0].z);
+      ctx.moveTo(s0.x, s0.y);
+      for (let i = 1; i < this.sketchPoints.length; i++) {
+        const s = this.w2s(this.sketchPoints[i].x, this.sketchPoints[i].z);
+        ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+      // 画虚线预览（最后一点→鼠标→起点）
+      if (this.sketchMouse && this._sketchDragIdx < 0) {
+        const last = this.sketchPoints.length - 1;
+        const sl = this.w2s(this.sketchPoints[last].x, this.sketchPoints[last].z);
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "rgba(255,138,61,0.4)";
+        ctx.beginPath();
+        ctx.moveTo(sl.x, sl.y);
+        ctx.lineTo(this.sketchMouse.x, this.sketchMouse.y);
+        if (this.sketchPoints.length >= 3) {
+          ctx.lineTo(s0.x, s0.y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // 填充
+      if (this.sketchPoints.length >= 3) {
+        ctx.fillStyle = "rgba(61,169,255,0.08)";
+        ctx.closePath(); ctx.fill();
+      }
+      // 顶点标记
+      this.sketchPoints.forEach((p, i) => {
+        const s = this.w2s(p.x, p.z);
+        ctx.fillStyle = i === 0 ? "#46d369" : "#ff8a3d";
+        ctx.beginPath(); ctx.arc(s.x, s.y, i === 0 ? 8 : 6, 0, 7); ctx.fill();
+        if (i === 0) { ctx.strokeStyle = "#46d369"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, 7); ctx.stroke(); }
+        ctx.fillStyle = "#04121f"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(i + 1, s.x, s.y);
+      });
+      // 坐标
+      ctx.fillStyle = "#e6edf3"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+      this.sketchPoints.forEach((p, i) => {
+        const s = this.w2s(p.x, p.z);
+        ctx.fillText(`(${p.x.toFixed(0)},${p.z.toFixed(0)})`, s.x, s.y + 12);
       });
     }
 

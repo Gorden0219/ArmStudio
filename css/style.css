@@ -184,3 +184,40 @@ input[type=color]{width:46px;height:28px;padding:0;border:1px solid var(--line);
 .poly-vert-row input{width:60px;background:var(--panel2);color:var(--text);
   border:1px solid var(--line);border-radius:4px;padding:4px 6px;font-size:12px}
 .poly-vert-row .del{color:var(--red);cursor:pointer;padding:0 4px}
+
+/* CAD 面板分区 */
+.sec-head{font-size:11px;color:var(--muted);margin:12px 0 4px;text-transform:uppercase;
+  letter-spacing:.5px;border-top:1px solid var(--line);padding-top:8px}
+.sec-head small{text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400}
+
+/* ★ 草图模块醒目 */
+.sketch-section{
+  margin:10px 0;border:2px solid #ff8a3d;border-radius:10px;
+  padding:10px 12px;background:rgba(255,138,61,0.06);
+  box-shadow:0 0 12px rgba(255,138,61,0.12);
+}
+.sketch-title{color:var(--accent)!important;border:none!important;padding-top:0!important;
+  font-size:12px!important;font-weight:700!important}
+.sketch-toolbar{display:flex;gap:6px;margin:6px 0}
+.sketch-btn{background:rgba(255,138,61,0.15)!important;border-color:rgba(255,138,61,0.4)!important;
+  color:var(--accent)!important;font-weight:600}
+.sketch-btn:hover{background:rgba(255,138,61,0.25)!important;border-color:var(--accent)!important}
+.sketch-btn-cancel{background:rgba(255,92,108,0.15)!important;border-color:rgba(255,92,108,0.4)!important;
+  color:var(--red)!important}
+.sketch-btn-cancel:hover{background:rgba(255,92,108,0.25)!important}
+.sketch-depth-row{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:12px}
+.sketch-depth-row input[type=range]{flex:1;height:4px}
+.sketch-hint{font-size:11px;color:var(--muted);line-height:1.6;
+  padding:6px 8px;background:rgba(255,255,255,.04);border-radius:6px;margin-top:4px}
+.sketch-hint-icon{font-size:13px;margin-right:4px}
+
+/* 草图变换控件 */
+#sketch-edit-controls{border:1px solid rgba(61,169,255,0.3);border-radius:6px;
+  padding:4px 8px;margin-top:4px;background:rgba(61,169,255,0.04)}
+
+/* 色彩调色板 */
+.palette{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
+.palette .chip{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);
+  cursor:pointer;transition:.12s;display:inline-block}
+.palette .chip:hover{border-color:var(--text);transform:scale(1.15)}
+.palette .chip.active{border-color:var(--accent2);box-shadow:0 0 6px var(--accent2)}

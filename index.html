@@ -128,11 +128,13 @@
     <!-- CAD 工作台（设计模式显示） -->
     <div class="panel" id="design-panel" style="display:none">
       <h3>🛠 CAD 工作台</h3>
-      <div class="row">
-        <button id="cad-new" class="tb">📄 新建空白</button>
-      </div>
 
-      <div class="tree-title">添加可动部件（先在树中选父连杆）</div>
+      <!-- ===== 文件 ===== -->
+      <div class="sec-head">文件</div>
+      <div class="row"><button id="cad-new" class="tb">📄 新建空白</button></div>
+
+      <!-- ===== 结构管理 ===== -->
+      <div class="sec-head">结构管理 <small>选父连杆后添加</small></div>
       <div class="addparts">
         <button class="tb sm" data-add="revolute">＋ 旋转关节</button>
         <button class="tb sm" data-add="prismatic">＋ 移动关节</button>
@@ -140,29 +142,85 @@
         <button class="tb sm" data-add="tool">＋ 末端工具</button>
       </div>
 
-      <div class="tree-title">创建新零件（选父连杆后点按）</div>
+      <div class="sec-head">结构树</div>
+      <ul id="struct-tree" class="tree"></ul>
+
+      <!-- ===== 创建零件 ===== -->
+      <div class="sec-head">创建基本零件</div>
       <div class="addparts">
         <button class="tb sm" data-shape="box">＋ 方块</button>
         <button class="tb sm" data-shape="cylinder">＋ 圆柱</button>
         <button class="tb sm" data-shape="sphere">＋ 球体</button>
+        <button class="tb sm" data-shape="cone">＋ 圆锥</button>
+        <button class="tb sm" data-shape="torus">＋ 圆环</button>
+        <button class="tb sm" data-shape="pyramid">＋ 棱锥</button>
+      </div>
+      <div class="addparts">
+        <button class="tb sm" data-shape="wedge">＋ 楔形</button>
+        <button class="tb sm" data-shape="pipe">＋ 管材</button>
+        <button class="tb sm" data-shape="gear">＋ 齿轮</button>
         <button class="tb sm" data-shape="extrude">＋ 拉伸体</button>
       </div>
 
-      <div class="tree-title">结构树</div>
-      <ul id="struct-tree" class="tree"></ul>
-
-      <div class="row">
-        <label>手柄</label>
-        <button id="giz-move" class="tb sm active">⤧ 平移</button>
-        <button id="giz-rot" class="tb sm">⟳ 旋转</button>
+      <!-- ===== ★ 草图绘制（醒目） ===== -->
+      <div class="sketch-section">
+        <div class="sec-head sketch-title">✏️ 草图绘制 — 自定义任意轮廓</div>
+        <div class="sketch-toolbar">
+          <button id="btn-sketch-start" class="tb sm sketch-btn">✏️ 开始画草图</button>
+          <button id="btn-sketch-finish" class="tb sm sketch-btn" style="display:none">✅ 完成(<span id="sketch-count">0</span>)</button>
+          <button id="btn-sketch-cancel" class="tb sm sketch-btn-cancel" style="display:none">✕ 取消</button>
+        </div>
+        <!-- 草图顶点坐标输入 -->
+        <div class="sketch-depth-row" id="sketch-coord-row" style="display:none">
+          <label>顶点坐标</label>
+          <span class="muted" id="sketch-vert-label">当前点 0</span>
+          <input type="number" id="sketch-input-x" class="num" value="0" step="5">
+          <input type="number" id="sketch-input-z" class="num" value="0" step="5">
+          <button id="btn-sketch-add-coord" class="tb sm" style="font-size:10px">＋</button>
+        </div>
+        <div class="sketch-depth-row" id="sketch-depth-row" style="display:none">
+          <label>拉伸深度</label>
+          <input type="range" id="sketch-depth-slider" min="5" max="200" value="30">
+          <input type="number" id="sketch-depth" class="num" value="30">
+          <span class="muted">mm</span>
+        </div>
+        <div class="sketch-hint" id="sketch-hint" style="display:none">
+          <span class="sketch-hint-icon">💡</span>
+          在 <b>2D 俯视图</b> 点击放置顶点，或在下方输入 X,Z 坐标后按＋添加，<b>右键</b>撤销上一点
+        </div>
       </div>
-      <div class="row">
-        <label><input type="checkbox" id="snap-on" checked> 吸附</label>
-        <input type="number" id="snap-step" class="num" value="10"> mm
+
+      <!-- ===== 3D 自由放置（新） ===== -->
+      <div class="panel" id="free-place-panel" style="padding:8px 12px 10px;background:rgba(70,211,105,0.06);border:1px solid rgba(70,211,105,0.25);border-radius:8px;margin:8px 0">
+        <div style="font-size:12px;font-weight:700;color:#46d369;margin-bottom:6px">🎯 3D 自由放置</div>
+        <div class="row" style="margin-top:4px">
+          <button id="btn-fp-toggle" class="tb sm" style="background:rgba(70,211,105,0.12);border-color:rgba(70,211,105,0.3);color:#46d369;font-weight:600">📍 开始放置</button>
+          <select id="fp-shape" class="sel sm" style="flex:1">
+            <option value="box">方块</option>
+            <option value="cylinder">圆柱</option>
+            <option value="sphere">球体</option>
+            <option value="cone">圆锥</option>
+            <option value="torus">圆环</option>
+            <option value="pyramid">棱锥</option>
+            <option value="wedge">楔形</option>
+            <option value="pipe">管材</option>
+            <option value="gear">齿轮</option>
+            <option value="extrude">拉伸体</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <label style="color:var(--muted);font-size:11px">放置到</label>
+          <input type="number" id="fp-x" class="num3" value="0" step="10">
+          <input type="number" id="fp-y" class="num3" value="120" step="10">
+          <input type="number" id="fp-z" class="num3" value="0" step="10">
+          <button id="btn-fp-place" class="tb sm" style="font-size:10px;background:rgba(70,211,105,0.15)">放置</button>
+        </div>
+        <div class="muted" style="font-size:10px;margin-top:3px">开启后在 3D 场景点击地面直接放置零件（自动挂到根节点下方）</div>
       </div>
 
+      <!-- ===== 编辑连杆 ===== -->
       <div id="node-editor" style="display:none">
-        <div class="tree-title">连杆属性</div>
+        <div class="sec-head">编辑连杆</div>
         <div class="row"><label>名称</label><input type="text" id="nd-name" class="txt"></div>
         <div class="row"><label>关节</label>
           <select id="nd-type" class="sel sm">
@@ -181,15 +239,48 @@
         <div class="row"><label>限位</label>
           <input type="number" id="nd-lo" class="num"> ~ <input type="number" id="nd-hi" class="num">
         </div>
-        <div class="row"><label>形状</label>
+        <div class="row"><label>连杆形状</label>
           <select id="nd-shape" class="sel sm"><option value="cylinder">圆柱</option><option value="box">方块</option></select>
         </div>
         <div class="row" id="shape-cyl"><label>半径</label><input type="number" id="nd-radius" class="num"> mm</div>
         <div class="row" id="shape-box" style="display:none"><label>宽×厚</label><input type="number" id="nd-w" class="num"> <input type="number" id="nd-d" class="num"></div>
-        <div class="row"><label>颜色</label><input type="color" id="nd-color" value="#6b7b8c"></div>
 
-        <!-- 增强的 CAD 外形编辑 -->
-        <div class="tree-title">外形编辑器 <small id="geom-label">关闭</small></div>
+        <!-- ===== 🎨 色彩与材质 ===== -->
+        <div class="sec-head">🎨 色彩与材质</div>
+        <div class="row">
+          <div class="palette" id="palette">
+            <span class="chip" style="background:#6b7b8c" data-c="#6b7b8c"></span>
+            <span class="chip" style="background:#4a90d9" data-c="#4a90d9"></span>
+            <span class="chip" style="background:#e74c3c" data-c="#e74c3c"></span>
+            <span class="chip" style="background:#2ecc71" data-c="#2ecc71"></span>
+            <span class="chip" style="background:#f39c12" data-c="#f39c12"></span>
+            <span class="chip" style="background:#9b59b6" data-c="#9b59b6"></span>
+            <span class="chip" style="background:#1abc9c" data-c="#1abc9c"></span>
+            <span class="chip" style="background:#e67e22" data-c="#e67e22"></span>
+            <span class="chip" style="background:#ffffff" data-c="#ffffff"></span>
+            <span class="chip" style="background:#000000" data-c="#000000"></span>
+          </div>
+        </div>
+        <div class="row">
+          <label>自定义</label><input type="color" id="nd-color" value="#6b7b8c">
+          <button id="btn-rand-color" class="tb sm" style="font-size:11px;padding:4px 8px">🎲 随机</button>
+        </div>
+        <div class="row">
+          <label>材质</label>
+          <select id="nd-material" class="sel sm">
+            <option value="standard">标准 Standard</option>
+            <option value="metallic">金属 Metallic</option>
+            <option value="matte">磨砂 Matte</option>
+            <option value="glossy">光泽 Glossy</option>
+            <option value="emissive">自发光 Emissive</option>
+          </select>
+          <label style="font-size:11px">透明</label>
+          <input type="range" id="nd-opacity" min="5" max="100" value="100" style="width:50px">
+          <span id="nd-opacity-val" class="muted" style="font-size:11px;min-width:24px">100%</span>
+        </div>
+
+        <!-- ===== 外形编辑器 ===== -->
+        <div class="sec-head">外形编辑器 <small id="geom-label">关闭</small></div>
         <div class="row"><label><input type="checkbox" id="nd-geom-enable"> 启用自定义外形</label></div>
         <div id="geom-editor" style="display:none">
           <div class="row"><label>类型</label>
@@ -197,23 +288,53 @@
               <option value="box">方块 Box</option>
               <option value="cylinder">圆柱 Cylinder</option>
               <option value="sphere">球体 Sphere</option>
+              <option value="cone">圆锥 Cone</option>
+              <option value="torus">圆环 Torus</option>
+              <option value="pyramid">棱锥 Pyramid</option>
+              <option value="wedge">楔形 Wedge</option>
+              <option value="pipe">管材 Pipe</option>
+              <option value="gear">齿轮 Gear</option>
               <option value="extrude">拉伸 Extrude</option>
             </select>
           </div>
-          <!-- Box params -->
+          <!-- Box -->
           <div class="row geom-params" data-for="box">
             <label>尺寸</label>
             <input type="number" id="nd-gbox-w" class="num" placeholder="宽"> <input type="number" id="nd-gbox-d" class="num" placeholder="深"> <input type="number" id="nd-gbox-h" class="num" placeholder="高">
           </div>
-          <!-- Cylinder params -->
+          <!-- Cylinder -->
           <div class="row geom-params" data-for="cylinder" style="display:none">
             <label>尺寸</label> 半径 <input type="number" id="nd-gcyl-r" class="num"> 高 <input type="number" id="nd-gcyl-h" class="num">
           </div>
-          <!-- Sphere params -->
+          <!-- Sphere -->
           <div class="row geom-params" data-for="sphere" style="display:none">
             <label>半径</label> <input type="number" id="nd-gsph-r" class="num">
           </div>
-          <!-- Extrude params -->
+          <!-- Cone -->
+          <div class="row geom-params" data-for="cone" style="display:none">
+            <label>尺寸</label> 半径 <input type="number" id="nd-gcone-r" class="num"> 高 <input type="number" id="nd-gcone-h" class="num">
+          </div>
+          <!-- Torus -->
+          <div class="row geom-params" data-for="torus" style="display:none">
+            <label>尺寸</label> 主半径 <input type="number" id="nd-gtor-r" class="num"> 管径 <input type="number" id="nd-gtor-t" class="num">
+          </div>
+          <!-- Pyramid -->
+          <div class="row geom-params" data-for="pyramid" style="display:none">
+            <label>尺寸</label> 底宽 <input type="number" id="nd-gpyr-w" class="num"> 高 <input type="number" id="nd-gpyr-h" class="num">
+          </div>
+          <!-- Wedge -->
+          <div class="row geom-params" data-for="wedge" style="display:none">
+            <label>尺寸</label> 宽 <input type="number" id="nd-gwd-w" class="num"> 深 <input type="number" id="nd-gwd-d" class="num"> 高 <input type="number" id="nd-gwd-h" class="num">
+          </div>
+          <!-- Pipe -->
+          <div class="row geom-params" data-for="pipe" style="display:none">
+            <label>尺寸</label> 外径 <input type="number" id="nd-gpip-r" class="num"> 内径 <input type="number" id="nd-gpip-ir" class="num"> 高 <input type="number" id="nd-gpip-h" class="num">
+          </div>
+          <!-- Gear -->
+          <div class="row geom-params" data-for="gear" style="display:none">
+            <label>尺寸</label> 半径 <input type="number" id="nd-ggear-r" class="num"> 齿数 <input type="number" id="nd-ggear-t" class="num" style="width:40px"> 厚 <input type="number" id="nd-ggear-h" class="num">
+          </div>
+          <!-- Extrude -->
           <div class="row geom-params" data-for="extrude" style="display:none">
             <label>截面</label>
             <select id="nd-gext-profile" class="sel sm">
@@ -224,36 +345,70 @@
             </select>
             <label>深度</label><input type="number" id="nd-gext-depth" class="num">
           </div>
-          <!-- Extrude profile params: rect -->
+          <!-- Extrude profile sub-params -->
           <div class="row gext-profile" data-profile="rect" style="display:none">
             <label>矩形</label> 宽 <input type="number" id="nd-gext-rw" class="num"> 高 <input type="number" id="nd-gext-rh" class="num">
           </div>
-          <!-- Extrude profile params: circle -->
           <div class="row gext-profile" data-profile="circle" style="display:none">
             <label>半径</label> <input type="number" id="nd-gext-cr" class="num">
           </div>
-          <!-- Extrude profile params: triangle -->
           <div class="row gext-profile" data-profile="triangle" style="display:none">
             <label>边长</label> <input type="number" id="nd-gext-ts" class="num">
           </div>
-          <!-- Extrude profile params: polygon -->
           <div class="row gext-profile" data-profile="polygon" style="display:none">
             <label>顶点</label>
             <button id="btn-gext-poly-edit" class="tb sm">编辑顶点</button>
             <span class="muted" id="gext-poly-count">0 个</span>
           </div>
 
-          <!-- Cutouts section -->
-          <div class="tree-title">孔洞 <small id="cutout-count">0 个</small>
+          <!-- 草图拉伸编辑（选中拉伸体时显示） -->
+          <div id="sketch-edit-controls" style="display:none">
+            <div class="sec-head" style="margin-top:6px">草图变换</div>
+            <div class="row">
+              <button id="btn-sketch-flip-x" class="tb sm">↔ 水平翻转</button>
+              <button id="btn-sketch-flip-y" class="tb sm">↕ 垂直翻转</button>
+            </div>
+            <div class="row">
+              <label>旋转</label>
+              <input type="range" id="sketch-rotate" min="-180" max="180" value="0" style="flex:1">
+              <span id="sketch-rotate-val" class="muted">0°</span>
+            </div>
+          </div>
+
+          <!-- Cutouts -->
+          <div class="sec-head" style="margin-top:6px">孔洞 <small id="cutout-count">0 个</small>
             <button id="btn-add-cutout" class="tb sm" style="float:right">＋ 添加</button>
           </div>
           <div id="cutout-list"></div>
         </div>
 
         <div class="row"><label><input type="checkbox" id="nd-ee"> 末端执行器</label></div>
-        <div class="row"><button id="nd-resetrot" class="tb sm">重置姿态</button><button id="nd-del" class="tb danger sm">删除</button></div>
+
+        <!-- ===== 变换工具 ===== -->
+        <div class="sec-head">变换工具</div>
+        <div class="row">
+          <label>手柄</label>
+          <button id="giz-move" class="tb sm active">⤧ 平移</button>
+          <button id="giz-rot" class="tb sm">⟳ 旋转</button>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="snap-on" checked> 吸附</label>
+          <input type="number" id="snap-step" class="num" value="10"> mm
+        </div>
+        <div class="row">
+          <label>复制</label>
+          <button id="btn-mirror" class="tb sm">镜像</button>
+          <button id="btn-pattern" class="tb sm">阵列</button>
+          <label class="ck"><input type="checkbox" id="chk-dim"> 📐 尺寸</label>
+        </div>
+        <div class="row">
+          <button id="nd-resetrot" class="tb sm">重置姿态</button>
+          <button id="nd-del" class="tb danger sm">🗑 删除</button>
+        </div>
       </div>
 
+      <!-- ===== 全局操作 ===== -->
+      <div class="sec-head">全局</div>
       <button id="btn-sethome" class="tb wide">把当前姿态设为初始</button>
       <button id="cad-export" class="tb wide">💾 导出 CAD 模型 (JSON)</button>
       <button id="cad-done" class="tb primary wide">▶ 切换到动作设计模式</button>
@@ -325,6 +480,7 @@
 <script src="js/gizmo.js"></script>
 <script src="js/robot3d.js"></script>
 <script src="js/view2d.js"></script>
+<script src="js/sketch.js"></script>
 <script src="js/motion.js"></script>
 <script src="js/trajectory.js"></script>
 <script src="js/designer.js"></script>
