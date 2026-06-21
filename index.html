@@ -217,8 +217,23 @@
         </div>
       </div>
 
+      <!-- ===== 标准零件库 ===== -->
+      <div class="panel" id="partslib-panel" style="border:1px solid rgba(70,211,105,0.3);border-radius:8px;margin:8px 0;padding:8px 10px;background:rgba(70,211,105,0.04)">
+        <div style="font-size:12px;font-weight:700;color:#46d369;margin-bottom:6px">📦 标准零件库</div>
+        <div class="parts-cats" id="parts-cats"></div>
+        <div id="parts-items" style="max-height:160px;overflow-y:auto;margin:4px 0"></div>
+        <div id="parts-params" style="display:none;font-size:11px;padding:4px 0"></div>
+        <div id="parts-preview" style="display:none">
+          <div class="row">
+            <span class="muted" id="part-desc"></span>
+            <span class="muted" id="part-std" style="font-size:10px"></span>
+          </div>
+          <button id="btn-part-add" class="tb sm wide" style="background:rgba(70,211,105,0.12);border-color:rgba(70,211,105,0.3);color:#46d369">＋ 添加到 CAD</button>
+        </div>
+      </div>
+
       <!-- ===== 布尔运算 ===== -->
-      <div class="panel" id="boolean-panel" style="padding:8px 12px;border:1px solid rgba(255,92,108,0.25);border-radius:8px;margin:8px 0;background:rgba(255,92,108,0.04)">
+      <div class="panel" style="padding:8px 12px;border:1px solid rgba(255,92,108,0.25);border-radius:8px;margin:8px 0;background:rgba(255,92,108,0.04)">
         <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⚡ 布尔运算</div>
         <div class="row" style="margin-top:2px">
           <button id="btn-bool-union" class="tb sm" style="font-size:11px">∪ 合并</button>
@@ -228,7 +243,7 @@
         <div class="muted" style="font-size:10px;margin-top:2px">选中两个零件后执行操作</div>
       </div>
 
-      <!-- ===== 3D 自由放置（新） ===== -->
+      <!-- ===== 3D 自由放置 ===== -->
       <div class="panel" id="free-place-panel" style="padding:8px 12px 10px;background:rgba(70,211,105,0.06);border:1px solid rgba(70,211,105,0.25);border-radius:8px;margin:8px 0">
         <div style="font-size:12px;font-weight:700;color:#46d369;margin-bottom:6px">🎯 3D 自由放置</div>
         <div class="row" style="margin-top:4px">
@@ -522,6 +537,7 @@
 <script src="js/motion.js"></script>
 <script src="js/trajectory.js"></script>
 <script src="js/designer.js"></script>
+<script src="js/partslib.js"></script>
 <script src="js/codegen.js"></script>
 <script src="js/examples.js"></script>
 <script src="js/app.js"></script>

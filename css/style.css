@@ -221,3 +221,15 @@ input[type=color]{width:46px;height:28px;padding:0;border:1px solid var(--line);
   cursor:pointer;transition:.12s;display:inline-block}
 .palette .chip:hover{border-color:var(--text);transform:scale(1.15)}
 .palette .chip.active{border-color:var(--accent2);box-shadow:0 0 6px var(--accent2)}
+
+/* 标准零件库 */
+#partslib-panel .parts-cats{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+#partslib-panel .parts-cats .cat-btn{font-size:10px;padding:3px 8px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);cursor:pointer}
+#partslib-panel .parts-cats .cat-btn.active{background:rgba(70,211,105,0.15);border-color:rgba(70,211,105,0.4);color:var(--green)}
+#partslib-panel .parts-cats .cat-btn:hover{border-color:var(--green)}
+#parts-items .part-item{font-size:11px;padding:4px 8px;margin:2px 0;background:var(--panel2);border-radius:4px;cursor:pointer;display:flex;justify-content:space-between}
+#parts-items .part-item:hover{background:#2d3a49}
+#parts-items .part-item.active{background:rgba(70,211,105,0.12);border:1px solid rgba(70,211,105,0.3)}
+#parts-items .part-item .pi-std{font-size:9px;color:var(--muted)}
+#parts-params .pp-row{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px}
+#parts-params .pp-row label{color:var(--muted);min-width:50px;font-size:10px}

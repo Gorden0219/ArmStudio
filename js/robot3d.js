@@ -122,6 +122,15 @@ class Robot3D {
 
     // 连杆 + 关节
     m.nodes.forEach((n, i) => {
+      // 标准零件组（parts library）
+      if (n._partGroup) {
+        const clone = n._partGroup.clone(true);
+        clone.position.copy(fk.jointPos[i]);
+        clone.quaternion.setFromRotationMatrix(fk.world[i]);
+        clone.userData.nodeIndex = i;
+        this.armGroup.add(clone); this._dynamic.push(clone);
+        this._pickableMeshes.push(clone);
+      }
       // 显式几何（机身/底座/自定义外形）
       if (n.geometry) {
         // 兼容旧格式：简单 box/cylinder/sphere
@@ -149,8 +158,8 @@ class Robot3D {
           }
         }
       }
-      // 连杆骨架（父→本节点），按 linkShape 渲染真实形状
-      if (n.parent >= 0) {
+      // 连杆骨架（标准零件跳过骨架）
+      if (n.parent >= 0 && !n._partGroup) {
         const b = Shapes.buildBoneGeometry(n.linkShape);
         const link = new THREE.Mesh(b.geo, this._matNode(n) || this.matLink);
         this._orient(link, fk.linkStart[i], fk.jointPos[i], b.rx, b.rz);
@@ -158,8 +167,8 @@ class Robot3D {
         this.armGroup.add(link); this._dynamic.push(link);
         this._pickableMeshes.push(link);
       }
-      // 关节球
-      if (m.isMovable(i)) {
+      // 关节球（跳过标准零件）
+      if (m.isMovable(i) && !n._partGroup) {
         const jm = new THREE.Mesh(new THREE.SphereGeometry(15, 18, 14), this.matJoint);
         jm.position.copy(fk.jointPos[i]);
         this.armGroup.add(jm); this._dynamic.push(jm);

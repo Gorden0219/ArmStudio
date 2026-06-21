@@ -468,11 +468,11 @@
       setClickMode(false);
       if (fpActive) setFP(false);
       renderTree();
+      renderPartCats();
       robot.setGizmoMode($("#giz-rot").classList.contains("active") ? "rotate" : "translate");
     } else {
-      // 退出 CAD：关闭自由放置、草图
+      // 退出 CAD：关闭自由放置
       if (fpActive) setFP(false);
-      if (sketch.active) exitSketch();
       // 把结构变化同步进动作模式（关节滑块/末端列表/TCP）
       selNode = -1; $("#node-editor").style.display = "none";
       buildSliders(); buildEEList(); refreshTcp();
@@ -1103,6 +1103,123 @@
   $("#btn-bool-union").onclick = () => boolOp('union');
   $("#btn-bool-subtract").onclick = () => boolOp('subtract');
   $("#btn-bool-intersect").onclick = () => boolOp('intersect');
+
+  /* ---- 📦 标准零件库 ---- */
+  let _partCat = null, _partItem = null;
+  function renderPartCats() {
+    const box = $("#parts-cats"); box.innerHTML = '';
+    PartsLib.categories().forEach((catId) => {
+      const info = PartsLib.categoryInfo(catId);
+      const btn = document.createElement('button');
+      btn.className = 'cat-btn';
+      btn.textContent = info.label;
+      btn.onclick = () => selectPartCat(catId);
+      box.appendChild(btn);
+    });
+  }
+  function selectPartCat(catId) {
+    _partCat = catId;
+    document.querySelectorAll('.cat-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelector(`.cat-btn:nth-child(${PartsLib.categories().indexOf(catId)+1})`)?.classList.add('active');
+    renderPartItems(catId);
+  }
+  function renderPartItems(catId) {
+    const box = $("#parts-items"); box.innerHTML = '';
+    _partItem = null;
+    $("#parts-params").style.display = 'none';
+    $("#parts-preview").style.display = 'none';
+    PartsLib.items(catId).forEach((item) => {
+      const div = document.createElement('div');
+      div.className = 'part-item';
+      div.innerHTML = `<span>${item.label}</span><span class="pi-std">${item.standard || ''}</span>`;
+      div.onclick = () => selectPartItem(catId, item.id);
+      box.appendChild(div);
+    });
+  }
+  function selectPartItem(catId, itemId) {
+    _partItem = itemId;
+    document.querySelectorAll('.part-item').forEach((b) => b.classList.remove('active'));
+    const items = document.querySelectorAll('.part-item');
+    const idx = PartsLib.items(catId).findIndex((i) => i.id === itemId);
+    if (items[idx]) items[idx].classList.add('active');
+    // Show params
+    const item = PartsLib.itemInfo(catId, itemId);
+    if (!item) return;
+    const paramsBox = $("#parts-params"); paramsBox.innerHTML = '';
+    paramsBox.style.display = '';
+    if (item.params) {
+      Object.keys(item.params).forEach((k) => {
+        const pdef = item.params[k];
+        const row = document.createElement('div');
+        row.className = 'pp-row';
+        row.innerHTML = `<label>${pdef.label}</label>`;
+        if (pdef.type === 'select') {
+          const sel = document.createElement('select');
+          sel.className = 'sel sm';
+          sel.style.flex = '1';
+          sel.innerHTML = pdef.options.map((o) => `<option value="${o}"${o === (pdef.default||'')?' selected':''}>${o}</option>`).join('');
+          sel.onchange = () => updatePartPreview(catId, itemId);
+          row.appendChild(sel);
+        } else if (pdef.type === 'range') {
+          const inp = document.createElement('input');
+          inp.type = 'number'; inp.className = 'num'; inp.value = pdef.default || 30;
+          inp.style.width = '65px';
+          inp.oninput = () => updatePartPreview(catId, itemId);
+          row.appendChild(inp);
+          const span = document.createElement('span');
+          span.className = 'muted';
+          span.textContent = (pdef.min||0) + '~' + (pdef.max||999);
+          row.appendChild(span);
+        }
+        paramsBox.appendChild(row);
+      });
+    }
+    $("#part-desc").textContent = item.desc || '';
+    $("#part-std").textContent = item.standard || '';
+    $("#parts-preview").style.display = '';
+  }
+  function readPartParams(catId, itemId) {
+    const item = PartsLib.itemInfo(catId, itemId);
+    if (!item || !item.params) return {};
+    const out = {};
+    const rows = $("#parts-params").querySelectorAll('.pp-row');
+    let ri = 0;
+    Object.keys(item.params).forEach((k) => {
+      const pdef = item.params[k];
+      const row = rows[ri];
+      if (row) {
+        const inp = row.querySelector('input, select');
+        if (inp) out[k] = inp.value;
+      }
+      ri++;
+    });
+    return out;
+  }
+  function updatePartPreview(catId, itemId) {
+    // No live preview for now — too heavy, just update params readout
+  }
+  $("#btn-part-add").onclick = () => {
+    if (!_partCat || !_partItem) { status("请先选择一个标准零件"); return; }
+    const params = readPartParams(_partCat, _partItem);
+    if (selNode < 0 && model.nodes.length > 0) { selNode = 0; renderTree(); }
+    const parent = selNode >= 0 ? selNode : 0;
+    // 创建一个新节点，用零件的默认颜色
+    const ni = Designer.addChild(model, parent, { type: 'fixed' });
+    const n = model.nodes[ni];
+    const item = PartsLib.itemInfo(_partCat, _partItem);
+    n.name = item.label.replace(/[^a-zA-Z0-9一-龥]/g, '') + '_' + ni;
+    n.color = '#889999';
+    // 构建几何组
+    const group = PartsLib.build(_partCat, _partItem, params);
+    if (group) {
+      // 将 group 转为 shapes 可用的格式：用标准零件构建的 group 直接存到 node
+      n._partGroup = group; // 标记: 这是一个标准零件组
+      n.geometry = null; // 跳过普通几何渲染
+    }
+    buildSliders(); buildEEList(); selectNode(ni); refreshAll();
+    status(`✅ 已添加标准零件「${n.name}」`);
+  };
+
   function applySketchTransform(fn) {
     if (selNode < 0) return;
     const n = model.nodes[selNode];
